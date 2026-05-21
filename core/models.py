@@ -62,7 +62,7 @@ class Alias(Base):
     """
     __tablename__ = "aliases"
     __table_args__ = (
-        UniqueConstraint("alias_normalized", "source", name="uq_alias_source"),
+        UniqueConstraint("actor_id", "alias_normalized", "source", name="uq_alias_source"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
