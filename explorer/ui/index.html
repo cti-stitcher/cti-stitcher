@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>cti-stitcher — Threat Actor Explorer</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="shell">
+
+  <nav class="topbar">
+    <span class="topbar-logo">cti-stitcher</span>
+    <div class="topbar-nav">
+      <a href="/" class="active">Explorer</a>
+      <a href="/settings">Connectors</a>
+    </div>
+    <span class="sync-status" id="sync-status"></span>
+  </nav>
+
+  <main class="content">
+
+    <div class="search-bar">
+      <input
+        class="search-input"
+        id="search-input"
+        type="text"
+        placeholder="Search any actor name or alias... (e.g. Cozy Bear, APT29, Midnight Blizzard)"
+        autocomplete="off"
+      />
+    </div>
+
+    <div class="filters">
+      <select id="filter-industry">
+        <option value="">All Industries</option>
+        <option>Financial Services</option>
+        <option>Government</option>
+        <option>Defense</option>
+        <option>Healthcare</option>
+        <option>Energy</option>
+        <option>Technology</option>
+        <option>Telecommunications</option>
+        <option>Media</option>
+        <option>Education</option>
+        <option>Aerospace</option>
+        <option>Transportation</option>
+        <option>Manufacturing</option>
+        <option>Pharmaceutical</option>
+        <option>Critical Infrastructure</option>
+      </select>
+
+      <select id="filter-country">
+        <option value="">All Origins</option>
+        <option value="CN">🇨🇳 China</option>
+        <option value="RU">🇷🇺 Russia</option>
+        <option value="KP">🇰🇵 North Korea</option>
+        <option value="IR">🇮🇷 Iran</option>
+        <option value="VN">🇻🇳 Vietnam</option>
+        <option value="IN">🇮🇳 India</option>
+        <option value="PK">🇵🇰 Pakistan</option>
+        <option value="TR">🇹🇷 Turkey</option>
+        <option value="UA">🇺🇦 Ukraine</option>
+        <option value="US">🇺🇸 United States</option>
+      </select>
+
+      <button class="btn btn-ghost" id="clear-btn">Clear</button>
+    </div>
+
+    <div class="result-count" id="result-count"></div>
+    <div class="actor-list" id="actor-list">
+      <div class="loading">Loading actors...</div>
+    </div>
+
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+let allActors = [];
+let searchTimeout = null;
+
+async function loadActors(industry = "", countryCode = "") {
+  const list = document.getElementById("actor-list");
+  list.innerHTML = '<div class="loading">Loading...</div>';
+
+  try {
+    let url = "/api/actors?limit=500";
+    if (industry) url += `&industry=${encodeURIComponent(industry)}`;
+    if (countryCode) url += `&country_code=${countryCode}`;
+
+    allActors = await API.get(url);
+    renderActors(allActors);
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state">Failed to load actors: ${e.message}</div>`;
+  }
+}
+
+async function doSearch(query) {
+  if (!query.trim()) {
+    renderActors(allActors);
+    return;
+  }
+
+  try {
+    const data = await API.get(`/api/search?q=${encodeURIComponent(query)}&limit=20`);
+    renderActors(data.results, true);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function renderActors(actors, isSearch = false) {
+  const list = document.getElementById("actor-list");
+  const count = document.getElementById("result-count");
+
+  if (!actors.length) {
+    list.innerHTML = '<div class="empty-state">No actors found. Try running a data sync from the Connectors page.</div>';
+    count.textContent = "";
+    return;
+  }
+
+  count.textContent = `${actors.length} actor${actors.length !== 1 ? "s" : ""}`;
+
+  list.innerHTML = actors.map(a => {
+    const flag = countryFlag(a.country_code);
+    const aliasText = a.aliases.slice(0, 4).map(x => x.alias).join(" · ");
+    const industries = (a.industries || []).slice(0, 3).map(i => `<span class="tag">${i}</span>`).join(" ");
+    const attackBadge = a.attack_group_id ? `<span class="tag tag-accent">${a.attack_group_id}</span>` : "";
+    const fuzzyNote = isSearch && a.match_type === "fuzzy"
+      ? `<span class="match-fuzzy">~ fuzzy match on "${a.matched_alias}"</span>` : "";
+
+    return `
+      <div class="actor-card" onclick="window.location='/actor/${a.id}'">
+        <div>
+          <div class="actor-card-name">
+            <span class="flag">${flag}</span>
+            ${a.name}
+            ${attackBadge}
+            ${fuzzyNote}
+          </div>
+          <div class="actor-card-meta">
+            ${aliasText ? `aka: ${aliasText}${a.aliases.length > 4 ? ` (+${a.aliases.length - 4})` : ""}` : ""}
+          </div>
+          <div style="margin-top:6px">${industries}</div>
+        </div>
+        <div class="actor-card-right">
+          <div class="ttp-count">${a.technique_count} TTPs</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// Events
+document.getElementById("search-input").addEventListener("input", e => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => doSearch(e.target.value), 250);
+});
+
+document.getElementById("filter-industry").addEventListener("change", () => applyFilters());
+document.getElementById("filter-country").addEventListener("change", () => applyFilters());
+
+document.getElementById("clear-btn").addEventListener("click", () => {
+  document.getElementById("search-input").value = "";
+  document.getElementById("filter-industry").value = "";
+  document.getElementById("filter-country").value = "";
+  loadActors();
+});
+
+function applyFilters() {
+  const query = document.getElementById("search-input").value.trim();
+  if (query) { doSearch(query); return; }
+  const industry = document.getElementById("filter-industry").value;
+  const country = document.getElementById("filter-country").value;
+  loadActors(industry, country);
+}
+
+// Init
+loadSyncStatus(document.getElementById("sync-status"));
+loadActors();
+</script>
+</body>
+</html>

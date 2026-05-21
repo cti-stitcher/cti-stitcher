@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connectors — cti-stitcher</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="shell">
+
+  <nav class="topbar">
+    <span class="topbar-logo">cti-stitcher</span>
+    <div class="topbar-nav">
+      <a href="/">Explorer</a>
+      <a href="/settings" class="active">Connectors</a>
+    </div>
+    <span class="sync-status" id="sync-status"></span>
+  </nav>
+
+  <main class="content">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+      <div>
+        <h1 style="font-size:20px;font-weight:700;margin-bottom:4px">Data Connectors</h1>
+        <p style="color:var(--text-dim);font-size:13px">
+          Add API keys to your <code>.env</code> file to enable optional connectors.
+          ATT&CK and MISP Galaxy run without any configuration.
+        </p>
+      </div>
+      <button class="btn btn-primary" id="sync-btn">Run Full Sync</button>
+    </div>
+
+    <div id="connector-list"><div class="loading">Loading connectors...</div></div>
+
+    <div id="sync-log" style="margin-top:28px"></div>
+
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+async function loadConnectors() {
+  const list = document.getElementById("connector-list");
+  try {
+    const [connectors, statuses] = await Promise.all([
+      API.get("/api/sync/connectors"),
+      API.get("/api/sync/status"),
+    ]);
+
+    const statusMap = Object.fromEntries(statuses.map(s => [s.connector, s]));
+
+    list.innerHTML = connectors.map(c => {
+      const st = statusMap[c.connector] || {};
+      const active = c.available;
+      const dotClass = active ? "dot-green" : "dot-grey";
+      const statusLabel = active ? "Active" : (c.requires_auth ? "API key required" : "Unavailable");
+      const lastRun = st.last_run
+        ? `Last sync: ${new Date(st.last_run).toLocaleString()} — ${st.last_records_updated} records`
+        : "Never synced";
+      const envHint = c.env_vars.length
+        ? `<br>Set <code>${c.env_vars.join(", ")}</code> in your .env file`
+        : "";
+
+      return `
+        <div class="connector-card">
+          <div class="connector-dot ${dotClass}"></div>
+          <div class="connector-info">
+            <div class="connector-name">${c.connector}</div>
+            <div class="connector-sub">
+              ${statusLabel} · ${lastRun}${envHint}
+            </div>
+          </div>
+          ${st.last_status === "failed"
+            ? `<span class="tag" style="color:var(--danger);border-color:var(--danger)">Failed</span>` : ""}
+        </div>
+      `;
+    }).join("");
+  } catch (e) {
+    list.innerHTML = `<div class="empty-state">Failed to load connectors: ${e.message}</div>`;
+  }
+}
+
+document.getElementById("sync-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("sync-btn");
+  const logEl = document.getElementById("sync-log");
+  btn.disabled = true;
+  btn.textContent = "Syncing...";
+  logEl.innerHTML = '<div class="loading">Running sync — this may take a minute on first run...</div>';
+
+  try {
+    const result = await API.post("/api/sync");
+    logEl.innerHTML = `
+      <div class="section-title" style="margin-bottom:12px">Sync Results — ${new Date(result.synced_at).toLocaleString()}</div>
+      ${result.results.map(r => `
+        <div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+          <span style="min-width:120px;font-weight:500">${r.connector}</span>
+          <span class="tag ${r.status === 'success' ? 'tag-success' : r.status === 'skipped' ? '' : 'tag-warn'}">${r.status}</span>
+          <span style="color:var(--text-dim)">${r.records_updated} records</span>
+          ${r.message ? `<span style="color:var(--text-dim)">${r.message}</span>` : ""}
+        </div>
+      `).join("")}
+    `;
+    await loadConnectors();
+    loadSyncStatus(document.getElementById("sync-status"));
+  } catch (e) {
+    logEl.innerHTML = `<div style="color:var(--danger)">Sync failed: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Run Full Sync";
+  }
+});
+
+loadSyncStatus(document.getElementById("sync-status"));
+loadConnectors();
+</script>
+</body>
+</html>

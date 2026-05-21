@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "cti-stitcher"
+version = "0.1.0"
+description = "Open source CTI toolchain — actor alias resolution, threat explorer, and risk mapping"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.111.0",
+    "uvicorn==0.30.1",
+    "sqlalchemy==2.0.31",
+    "requests==2.32.3",
+    "stix2==3.0.1",
+    "taxii2-client==2.3.0",
+    "rapidfuzz==3.9.3",
+    "python-dotenv==1.0.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[project.scripts]
+cti-stitcher = "explorer.main:cli"
