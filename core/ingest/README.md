@@ -47,3 +47,12 @@ Always use `normalize_alias(name)` from `base.py` when writing alias records. Th
 ## Idempotency
 
 Use the existing patterns — check for existing rows before inserting, use `session.flush()` between passes. The sync can run multiple times without duplicating data.
+
+## Ordering dependencies
+
+Most connectors are independent and can run in any order. If your connector needs rows created by another connector to already exist (e.g. it joins against `Technique` by `attack_id`), it has an ordering dependency.
+
+- Document the dependency in a module docstring, like `ctid_nist80053.py` does (depends on `attack`).
+- Place it after its dependency in both `ALL_CONNECTORS` collections (`scripts/update_data.py` dict and `explorer/api/sync.py` list) — order is preserved and the full sync runs top to bottom.
+- Don't make the connector fail if the dependency hasn't run — degrade gracefully (skip and count what couldn't be linked, log a warning telling the user to run the dependency first). Running connectors individually via `--connector <name>` is supported and a user may run yours before its dependency.
+- If you ever need a *hard* dependency (connector should refuse to run, not degrade), raise from `run()` so `sync()` records it as `failed` with a clear message — but prefer graceful degradation where possible.

@@ -249,12 +249,14 @@ select:focus { border-color: var(--accent); }
   margin-bottom: 6px;
 }
 
+.technique-item {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
 .technique-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 5px 0;
-  border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
 .technique-id {
@@ -262,6 +264,24 @@ select:focus { border-color: var(--accent); }
   font-size: 11px;
   color: var(--text-dim);
   min-width: 90px;
+}
+
+/* NIST 800-53 control badges (ctid_nist80053 connector) */
+.technique-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 5px 0 0 100px;
+}
+.control-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(79, 142, 247, 0.1);
+  color: var(--accent);
+  border: 1px solid rgba(79, 142, 247, 0.25);
+  cursor: default;
 }
 
 /* Software pills */

@@ -91,6 +91,7 @@ class Technique(Base):
     parent_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("techniques.id"), nullable=True)
 
     actors: Mapped[list["ActorTechnique"]] = relationship("ActorTechnique", back_populates="technique", cascade="all, delete-orphan")
+    controls: Mapped[list["TechniqueControl"]] = relationship("TechniqueControl", back_populates="technique", cascade="all, delete-orphan")
 
 
 class ActorTechnique(Base):
@@ -158,6 +159,51 @@ class Targeting(Base):
     confidence: Mapped[str] = mapped_column(String(16), default="high")
 
     actor: Mapped["Actor"] = relationship("Actor", back_populates="targeting")
+
+
+# ---------------------------------------------------------------------------
+# Controls  (GRC framework crosswalk — NIST 800-53, etc.)
+# ---------------------------------------------------------------------------
+
+class Control(Base):
+    """
+    A control from a GRC framework (e.g. NIST 800-53 rev5).
+    `framework` is a plain string for now since v2 only ingests one
+    framework (nist_800_53); revisit if/when a second framework is added.
+    """
+    __tablename__ = "controls"
+    __table_args__ = (
+        UniqueConstraint("framework", "control_id", name="uq_control_framework_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    framework: Mapped[str] = mapped_column(String(32), nullable=False, index=True)  # e.g. "nist_800_53"
+    control_id: Mapped[str] = mapped_column(String(16), nullable=False, index=True)  # e.g. "AC-02"
+    control_group: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)  # e.g. "AC"
+    name: Mapped[str] = mapped_column(String(256), nullable=False)  # control title, e.g. "Account Management"
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # not populated by ctid_nist80053; reserved for future enrichment
+
+    techniques: Mapped[list["TechniqueControl"]] = relationship("TechniqueControl", back_populates="control", cascade="all, delete-orphan")
+
+
+class TechniqueControl(Base):
+    """
+    Links an ATT&CK technique to a control via a published crosswalk
+    (currently CTID's ATT&CK-to-NIST-800-53 mapping).
+    """
+    __tablename__ = "technique_controls"
+    __table_args__ = (
+        UniqueConstraint("technique_id", "control_id", "source", name="uq_technique_control_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    technique_id: Mapped[int] = mapped_column(Integer, ForeignKey("techniques.id"), nullable=False, index=True)
+    control_id: Mapped[int] = mapped_column(Integer, ForeignKey("controls.id"), nullable=False, index=True)
+    mapping_type: Mapped[str] = mapped_column(String(32), nullable=False)  # e.g. "mitigates"
+    source: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g. "ctid_nist80053"
+
+    technique: Mapped["Technique"] = relationship("Technique", back_populates="controls")
+    control: Mapped["Control"] = relationship("Control", back_populates="techniques")
 
 
 # ---------------------------------------------------------------------------

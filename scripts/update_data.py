@@ -19,12 +19,16 @@ load_dotenv()
 
 from core.db import init_db, get_session
 from core.ingest.attack import AttackConnector
+from core.ingest.ctid_nist80053 import CtidNist80053Connector
 from core.ingest.misp_galaxy import MispGalaxyConnector
 from core.ingest.malpedia import MalpediaConnector
 from core.ingest.mandiant import MandiantConnector
 
+# NOTE: order matters. ctid_nist80053 joins against Technique rows and
+# must run after attack — see core/ingest/README.md "Ordering dependencies".
 ALL_CONNECTORS = {
     "attack": AttackConnector(),
+    "ctid_nist80053": CtidNist80053Connector(),
     "misp_galaxy": MispGalaxyConnector(),
     "malpedia": MalpediaConnector(),
     "mandiant": MandiantConnector(),

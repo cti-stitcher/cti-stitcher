@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from core.db import get_session
-from core.models import Actor, Alias, ActorTechnique, ActorSoftware, Targeting, Technique, Software
+from core.models import Actor, Alias, ActorTechnique, ActorSoftware, Targeting, Technique, Software, Control, TechniqueControl
 
 router = APIRouter(prefix="/api/actors", tags=["actors"])
 
@@ -105,6 +105,27 @@ def _actor_detail(actor: Actor, db: Session) -> dict:
         .filter(ActorTechnique.actor_id == actor.id)
         .all()
     )
+    # NIST 800-53 controls that mitigate these techniques (ctid_nist80053 connector)
+    technique_ids = [tech.id for _, tech in actor_techniques]
+    controls_by_technique: dict[int, list] = {}
+    if technique_ids:
+        control_rows = (
+            db.query(TechniqueControl, Control)
+            .join(Control, TechniqueControl.control_id == Control.id)
+            .filter(TechniqueControl.technique_id.in_(technique_ids))
+            .all()
+        )
+        for tc, control in control_rows:
+            controls_by_technique.setdefault(tc.technique_id, []).append({
+                "control_id": control.control_id,
+                "name": control.name,
+                "control_group": control.control_group,
+                "framework": control.framework,
+                "mapping_type": tc.mapping_type,
+            })
+        for lst in controls_by_technique.values():
+            lst.sort(key=lambda c: c["control_id"])
+
     by_tactic: dict[str, list] = {}
     for at, tech in actor_techniques:
         for tactic in (tech.tactic or "unknown").split(","):
@@ -114,6 +135,7 @@ def _actor_detail(actor: Actor, db: Session) -> dict:
                 "name": tech.name,
                 "is_subtechnique": tech.is_subtechnique,
                 "source": at.source,
+                "controls": controls_by_technique.get(tech.id, []),
             })
 
     # Software

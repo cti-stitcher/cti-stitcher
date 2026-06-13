@@ -69,13 +69,21 @@ async function load() {
 
     const tacticBlocks = tacticKeys.map(tactic => {
       const techniques = a.techniques_by_tactic[tactic];
-      const rows = techniques.map(t => `
-        <div class="technique-row">
-          <span class="technique-id">${t.attack_id}</span>
-          <span>${t.name}</span>
-          ${t.is_subtechnique ? tag("sub", "") : ""}
+      const rows = techniques.map(t => {
+        const controlBadges = (t.controls || []).map(c =>
+          `<span class="control-badge" title="${c.name}">${c.control_id}</span>`
+        ).join("");
+        return `
+        <div class="technique-item">
+          <div class="technique-row">
+            <span class="technique-id">${t.attack_id}</span>
+            <span>${t.name}</span>
+            ${t.is_subtechnique ? tag("sub", "") : ""}
+          </div>
+          ${controlBadges ? `<div class="technique-controls">${controlBadges}</div>` : ""}
         </div>
-      `).join("");
+      `;
+      }).join("");
       return `
         <div class="tactic-block">
           <div class="tactic-name">${tacticLabel(tactic)}</div>
