@@ -27,7 +27,7 @@ def get_engine():
 
 
 engine = get_engine()
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+SessionLocal = sessionmaker(bind=engine, autoflush=True, autocommit=False)
 
 
 def init_db() -> None:
