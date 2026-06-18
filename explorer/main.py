@@ -23,6 +23,7 @@ from core.db import init_db, get_session
 from core.resolution import ResolutionIndex
 from explorer.api.actors import router as actors_router
 from explorer.api.controls import router as controls_router
+from explorer.api.d3fend import router as d3fend_router
 from explorer.api.gap import router as gap_router
 from explorer.api.search import router as search_router
 from explorer.api.sync import router as sync_router
@@ -56,6 +57,7 @@ app = FastAPI(
 # API routes
 app.include_router(actors_router)
 app.include_router(controls_router)
+app.include_router(d3fend_router)
 app.include_router(gap_router)
 app.include_router(search_router)
 app.include_router(sync_router)
@@ -87,6 +89,11 @@ def control_detail_page(control_id: str):
 @app.get("/gap-analysis")
 def gap_analysis_page():
     return FileResponse(str(UI_DIR / "gap_analysis.html"))
+
+
+@app.get("/d3fend")
+def d3fend_page():
+    return FileResponse(str(UI_DIR / "d3fend.html"))
 
 
 @app.get("/settings")

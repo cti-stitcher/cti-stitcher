@@ -10,17 +10,20 @@ from sqlalchemy.orm import Session
 from core.models import SyncLog
 from core.ingest.attack import AttackConnector
 from core.ingest.ctid_nist80053 import CtidNist80053Connector
+from core.ingest.d3fend import D3FendConnector
 from core.ingest.misp_galaxy import MispGalaxyConnector
 from core.ingest.malpedia import MalpediaConnector
 from core.ingest.mandiant import MandiantConnector
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
-# NOTE: order matters. ctid_nist80053 joins against Technique rows and
-# must run after attack — see core/ingest/README.md "Ordering dependencies".
+# NOTE: order matters.
+#   ctid_nist80053 and d3fend both join against Technique rows and must run
+#   after attack — see core/ingest/README.md "Ordering dependencies".
 ALL_CONNECTORS = [
     AttackConnector(),
     CtidNist80053Connector(),
+    D3FendConnector(),
     MispGalaxyConnector(),
     MalpediaConnector(),
     MandiantConnector(),

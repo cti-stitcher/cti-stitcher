@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>D3FEND — cti-stitcher</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="shell">
+
+  <nav class="topbar">
+    <span class="topbar-logo">cti-stitcher</span>
+    <div class="topbar-nav">
+      <a href="/">Explorer</a>
+      <a href="/controls">Controls</a>
+      <a href="/gap-analysis">Gap Analysis</a>
+      <a href="/d3fend" class="active">D3FEND</a>
+      <a href="/settings">Connectors</a>
+    </div>
+    <span class="sync-status" id="sync-status"></span>
+  </nav>
+
+  <main class="content">
+    <div style="margin-bottom:20px">
+      <h1 style="font-size:20px;font-weight:700;margin-bottom:4px">D3FEND Countermeasures</h1>
+      <p style="color:var(--text-dim);font-size:13px">
+        MITRE D3FEND defensive techniques mapped to ATT&amp;CK. Mark what you've deployed to
+        see detection coverage in <a href="/gap-analysis">Gap Analysis</a>.
+      </p>
+    </div>
+
+    <!-- Tactic filter pills -->
+    <div class="family-pills" id="tactic-pills">
+      <button class="family-pill active" data-tactic="ALL" onclick="setTactic('ALL', this)">All</button>
+      <button class="family-pill" data-tactic="Harden" onclick="setTactic('Harden', this)">Harden</button>
+      <button class="family-pill" data-tactic="Detect" onclick="setTactic('Detect', this)">Detect</button>
+      <button class="family-pill" data-tactic="Isolate" onclick="setTactic('Isolate', this)">Isolate</button>
+      <button class="family-pill" data-tactic="Deceive" onclick="setTactic('Deceive', this)">Deceive</button>
+      <button class="family-pill" data-tactic="Evict" onclick="setTactic('Evict', this)">Evict</button>
+      <button class="family-pill" data-tactic="Restore" onclick="setTactic('Restore', this)">Restore</button>
+    </div>
+
+    <!-- Stats bar -->
+    <div id="stats-bar" style="display:flex;gap:20px;margin:16px 0;font-size:13px;color:var(--text-dim)">
+      <span id="stat-total"></span>
+      <span id="stat-implemented"></span>
+      <a href="/gap-analysis" class="btn btn-primary" style="margin-left:auto;font-size:12px;padding:4px 12px">
+        Run Gap Analysis →
+      </a>
+    </div>
+
+    <!-- Countermeasure grid -->
+    <div id="cm-root"><div class="loading">Loading countermeasures...</div></div>
+
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+let allCM = [];
+let activeTactic = "ALL";
+
+const TACTIC_COLORS = {
+  Harden:  "var(--warn)",
+  Detect:  "#7c6fcd",
+  Isolate: "var(--accent)",
+  Deceive: "#c084fc",
+  Evict:   "var(--danger)",
+  Restore: "var(--success)",
+  Unknown: "var(--text-dim)",
+};
+
+function setTactic(tactic, btn) {
+  activeTactic = tactic;
+  document.querySelectorAll(".family-pill").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  render();
+}
+
+function tacticColor(t) {
+  return TACTIC_COLORS[t] || "var(--text-dim)";
+}
+
+function render() {
+  const root = document.getElementById("cm-root");
+  const visible = activeTactic === "ALL"
+    ? allCM
+    : allCM.filter(c => c.tactic === activeTactic);
+
+  const implCount = allCM.filter(c => c.implemented).length;
+  const visibleImpl = visible.filter(c => c.implemented).length;
+  document.getElementById("stat-total").textContent =
+    `${visible.length} countermeasure${visible.length !== 1 ? "s" : ""}`;
+  document.getElementById("stat-implemented").textContent =
+    `${implCount} implemented`;
+
+  if (!visible.length) {
+    root.innerHTML = `<div class="empty-state">No D3FEND data yet. Run a sync to ingest countermeasures.</div>`;
+    return;
+  }
+
+  root.innerHTML = `<div class="controls-grid">${visible.map(cmCard).join("")}</div>`;
+}
+
+function cmCard(cm) {
+  const color = tacticColor(cm.tactic);
+  const implClass = cm.implemented ? "control-card-impl" : "";
+  const btnLabel = cm.implemented ? "✓ Implemented" : "Mark Implemented";
+  const btnClass = cm.implemented ? "posture-toggle posture-on" : "posture-toggle";
+  const def = cm.definition ? cm.definition.slice(0, 120) + (cm.definition.length > 120 ? "…" : "") : "";
+  return `
+    <div class="d3fend-card ${implClass}" id="cm-${cm.d3fend_id.replace(/[^a-z0-9]/gi,'_')}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div>
+          <span class="tag" style="font-size:10px;background:${color}20;color:${color};border-color:${color}40;margin-bottom:6px;display:inline-block">
+            ${cm.tactic}
+          </span>
+          <div style="font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-bottom:2px">${cm.d3fend_id}</div>
+          <div style="font-weight:600;font-size:14px">${cm.name}</div>
+        </div>
+        <button
+          class="${btnClass}"
+          onclick="toggleCM('${cm.d3fend_id}', this)"
+          style="flex-shrink:0"
+        >${btnLabel}</button>
+      </div>
+      ${def ? `<div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5">${def}</div>` : ""}
+      <div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-family:var(--mono)">
+        ${cm.technique_count} ATT&amp;CK technique${cm.technique_count !== 1 ? "s" : ""}
+        <a href="https://d3fend.mitre.org/technique/${cm.d3fend_id}/"
+           target="_blank"
+           style="margin-left:10px;color:var(--text-dim);text-decoration:underline"
+        >d3fend.mitre.org ↗</a>
+      </div>
+    </div>
+  `;
+}
+
+async function toggleCM(d3fendId, btn) {
+  try {
+    const data = await API.post(`/api/d3fend/${d3fendId}/toggle`);
+    // Update local state
+    const cm = allCM.find(c => c.d3fend_id === d3fendId);
+    if (cm) cm.implemented = data.implemented;
+
+    // Update card in place (no full re-render to avoid scroll reset)
+    const safeid = d3fendId.replace(/[^a-z0-9]/gi,'_');
+    const card = document.getElementById(`cm-${safeid}`);
+    if (card) {
+      card.classList.toggle("control-card-impl", data.implemented);  // d3fend-card uses same impl class
+      btn.textContent = data.implemented ? "✓ Implemented" : "Mark Implemented";
+      btn.className = data.implemented ? "posture-toggle posture-on" : "posture-toggle";
+    }
+
+    // Update stats bar
+    const implCount = allCM.filter(c => c.implemented).length;
+    document.getElementById("stat-implemented").textContent = `${implCount} implemented`;
+  } catch (e) {
+    console.error("Toggle failed:", e);
+  }
+}
+
+async function load() {
+  loadSyncStatus(document.getElementById("sync-status"));
+  try {
+    allCM = await API.get("/api/d3fend");
+    render();
+  } catch (e) {
+    document.getElementById("cm-root").innerHTML =
+      `<div class="empty-state">Failed to load: ${e.message}</div>`;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

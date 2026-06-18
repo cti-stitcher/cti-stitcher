@@ -543,3 +543,50 @@ select:focus { border-color: var(--accent); }
 hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
 .result-count { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; }
+
+/* D3FEND countermeasure cards */
+.controls-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* D3FEND card is block-layout (not the flex row used by NIST controls) */
+.d3fend-card {
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.d3fend-card:hover {
+  border-color: var(--accent-dim);
+  background: #1d2133;
+}
+.d3fend-card.control-card-impl {
+  border-color: rgba(62, 207, 142, 0.25);
+}
+
+/* Dual coverage summary bars */
+.dual-bar-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+/* Framework sub-tab spacing */
+#framework-tabs .gap-tabs {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+#framework-tabs .gap-tab {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: none;
+  margin-bottom: -1px;
+}
+#framework-tabs .gap-tab.active {
+  border-bottom: 1px solid var(--surface);
+}

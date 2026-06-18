@@ -15,6 +15,7 @@
       <a href="/">Explorer</a>
       <a href="/controls">Controls</a>
       <a href="/gap-analysis" class="active">Gap Analysis</a>
+      <a href="/d3fend">D3FEND</a>
       <a href="/settings">Connectors</a>
     </div>
     <span class="sync-status" id="sync-status"></span>
@@ -24,18 +25,21 @@
     <div style="margin-bottom:20px">
       <h1 style="font-size:20px;font-weight:700;margin-bottom:4px">Gap Analysis</h1>
       <p style="color:var(--text-dim);font-size:13px">
-        See how your control posture stacks up against tracked threat actors.
-        Mark controls as implemented on the <a href="/controls">Controls page</a>.
+        See how your posture stacks up against tracked threat actors.
+        Mark controls on the <a href="/controls">Controls page</a> and
+        countermeasures on the <a href="/d3fend">D3FEND page</a>.
       </p>
     </div>
 
-    <!-- Tabs -->
+    <!-- Top-level tabs -->
     <div class="gap-tabs" style="margin-bottom:24px">
       <button class="gap-tab active" id="tab-single" onclick="setTab('single')">Single Actor</button>
       <button class="gap-tab" id="tab-all" onclick="setTab('all')">All Actors</button>
     </div>
 
-    <!-- Single Actor panel -->
+    <!-- ============================================================
+         Single Actor panel
+         ============================================================ -->
     <div id="panel-single">
       <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:24px">
         <div style="flex:1;max-width:420px">
@@ -55,25 +59,51 @@
           ></select>
         </div>
       </div>
+
+      <!-- Dual summary bar (shown when both analyses loaded) -->
+      <div id="dual-summary" style="display:none"></div>
+
+      <!-- Framework sub-tabs -->
+      <div id="framework-tabs" style="display:none;margin:16px 0 20px">
+        <div class="gap-tabs" style="margin-bottom:0">
+          <button class="gap-tab active" id="ftab-nist" onclick="setFrameworkTab('nist')">NIST 800-53</button>
+          <button class="gap-tab" id="ftab-d3fend" onclick="setFrameworkTab('d3fend')">D3FEND</button>
+        </div>
+      </div>
+
       <div id="gap-single-root"></div>
     </div>
 
-    <!-- All Actors panel -->
+    <!-- ============================================================
+         All Actors panel
+         ============================================================ -->
     <div id="panel-all" style="display:none">
-      <button class="btn btn-primary" onclick="runAllAnalysis()" style="margin-bottom:20px">
-        Analyze All Actors
-      </button>
+      <!-- All-actors framework toggle -->
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px">
+        <button class="btn btn-primary" onclick="runAllAnalysis()">Analyze All Actors</button>
+        <div class="gap-tabs" style="margin-bottom:0">
+          <button class="gap-tab active" id="all-ftab-nist" onclick="setAllFramework('nist')">NIST 800-53</button>
+          <button class="gap-tab" id="all-ftab-d3fend" onclick="setAllFramework('d3fend')">D3FEND</button>
+        </div>
+      </div>
       <div id="gap-all-root"></div>
     </div>
 
   </main>
-
 </div>
 
 <script src="/static/app.js"></script>
 <script>
 let allActors = [];
 let activeTab = "single";
+let activeFramework = "nist";   // "nist" | "d3fend"
+let activeAllFramework = "nist";
+
+// Cached results per actor (avoid redundant fetches)
+let cachedNist = null;
+let cachedD3fend = null;
+let cachedAllNist = null;
+let cachedAllD3fend = null;
 
 const TACTIC_ORDER = [
   "reconnaissance", "resource-development", "initial-access", "execution",
@@ -86,13 +116,31 @@ function tacticLabel(t) {
   return t.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
-// ---- Tab switching ----
+// ---- Top-level tab switching ----
 function setTab(tab) {
   activeTab = tab;
   document.getElementById("tab-single").classList.toggle("active", tab === "single");
   document.getElementById("tab-all").classList.toggle("active", tab === "all");
   document.getElementById("panel-single").style.display = tab === "single" ? "" : "none";
   document.getElementById("panel-all").style.display = tab === "all" ? "" : "none";
+}
+
+// ---- Framework sub-tabs (single actor) ----
+function setFrameworkTab(fw) {
+  activeFramework = fw;
+  document.getElementById("ftab-nist").classList.toggle("active", fw === "nist");
+  document.getElementById("ftab-d3fend").classList.toggle("active", fw === "d3fend");
+  renderFrameworkDetail();
+}
+
+function setAllFramework(fw) {
+  activeAllFramework = fw;
+  document.getElementById("all-ftab-nist").classList.toggle("active", fw === "nist");
+  document.getElementById("all-ftab-d3fend").classList.toggle("active", fw === "d3fend");
+  // Re-render cached all-actors data if available
+  const root = document.getElementById("gap-all-root");
+  if (fw === "nist" && cachedAllNist) renderAllGap(cachedAllNist, root, "nist");
+  else if (fw === "d3fend" && cachedAllD3fend) renderAllGap(cachedAllD3fend, root, "d3fend");
 }
 
 // ---- Actor listbox / filter ----
@@ -115,7 +163,7 @@ function filterActors() {
   populateListbox(filtered);
 }
 
-// ---- Single actor analysis ----
+// ---- Single actor ----
 function runSingleAnalysis() {
   const lb = document.getElementById("actor-listbox");
   const actorId = lb.value;
@@ -123,35 +171,162 @@ function runSingleAnalysis() {
   analyzeActor(actorId);
 }
 
-function renderSingleGap(data, root) {
-  const { actor, summary, posture, covered, not_covered } = data;
+async function analyzeActor(actorId) {
+  // Clear caches when switching actor
+  cachedNist = null;
+  cachedD3fend = null;
 
-  if (!posture.implemented_control_count) {
-    root.innerHTML = noPostureHtml(actor.name);
+  const root = document.getElementById("gap-single-root");
+  root.innerHTML = `<div class="loading">Analyzing...</div>`;
+  document.getElementById("dual-summary").style.display = "none";
+  document.getElementById("framework-tabs").style.display = "none";
+
+  // Fetch NIST and D3FEND in parallel
+  const [nistResult, d3fResult] = await Promise.allSettled([
+    API.get(`/api/gap/${actorId}`),
+    API.get(`/api/gap/d3fend/${actorId}`),
+  ]);
+
+  if (nistResult.status === "fulfilled") cachedNist = nistResult.value;
+  if (d3fResult.status === "fulfilled") cachedD3fend = d3fResult.value;
+
+  if (!cachedNist) {
+    root.innerHTML = `<div class="empty-state">Failed: ${nistResult.reason?.message || "unknown error"}</div>`;
     return;
   }
 
-  const pct = summary.coverage_pct;
-  const barColor = pct >= 70 ? "var(--success)" : pct >= 40 ? "var(--warn)" : "var(--danger)";
+  // Show dual summary only when both have posture data
+  const hasNistPosture = cachedNist.posture.implemented_control_count > 0;
+  const hasD3fendPosture = cachedD3fend && cachedD3fend.posture.implemented_count > 0;
 
+  if (hasNistPosture || hasD3fendPosture) {
+    document.getElementById("dual-summary").style.display = "";
+    document.getElementById("framework-tabs").style.display = "";
+    renderDualSummary(cachedNist, cachedD3fend);
+    renderFrameworkDetail();
+  } else {
+    // Neither framework has posture — show combined empty state
+    root.innerHTML = noPostureHtml();
+  }
+}
+
+function renderDualSummary(nist, d3f) {
+  const actor = nist.actor;
+  const nistPct = nist.summary.coverage_pct;
+  const d3fPct = d3f ? d3f.summary.coverage_pct : null;
+
+  const nistColor = pctColor(nistPct);
+  const d3fColor = d3fPct !== null ? pctColor(d3fPct) : "var(--text-dim)";
+
+  document.getElementById("dual-summary").innerHTML = `
+    <div class="gap-summary">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+        <span style="font-size:15px;font-weight:600">
+          <a href="/actor/${actor.id}" style="color:inherit">${actor.name}</a>
+          ${actor.attack_group_id ? `<span class="tag tag-accent" style="margin-left:8px;font-size:12px">${actor.attack_group_id}</span>` : ""}
+        </span>
+      </div>
+
+      <!-- NIST bar -->
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="color:var(--text-dim)">NIST 800-53 compliance</span>
+          <span style="font-family:var(--mono);font-weight:700;color:${nistColor}">${nistPct}%</span>
+        </div>
+        <div class="coverage-bar-bg">
+          <div class="coverage-bar-fill" style="width:${nistPct}%;background:${nistColor}"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:3px">
+          ${nist.summary.covered}/${nist.summary.total_techniques} techniques · ${nist.posture.implemented_control_count} controls
+        </div>
+      </div>
+
+      <!-- D3FEND bar -->
+      ${d3f ? `
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="color:var(--text-dim)">D3FEND detection coverage</span>
+          <span style="font-family:var(--mono);font-weight:700;color:${d3fColor}">${d3fPct}%</span>
+        </div>
+        <div class="coverage-bar-bg">
+          <div class="coverage-bar-fill" style="width:${d3fPct}%;background:${d3fColor}"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:3px">
+          ${d3f.summary.covered}/${d3f.summary.total_techniques} techniques · ${d3f.posture.implemented_count} countermeasures
+        </div>
+      </div>` : `<div style="font-size:12px;color:var(--text-dim)">D3FEND not yet synced — run a sync to enable detection coverage.</div>`}
+    </div>
+  `;
+}
+
+function renderFrameworkDetail() {
+  const root = document.getElementById("gap-single-root");
+
+  if (activeFramework === "nist") {
+    if (!cachedNist || !cachedNist.posture.implemented_control_count) {
+      root.innerHTML = `<div style="padding:16px 0;font-size:13px;color:var(--text-dim)">
+        No NIST controls marked as implemented. <a href="/controls">Go to Controls →</a>
+      </div>`;
+      return;
+    }
+    renderNistDetail(cachedNist, root);
+  } else {
+    if (!cachedD3fend || !cachedD3fend.posture.implemented_count) {
+      root.innerHTML = `<div style="padding:16px 0;font-size:13px;color:var(--text-dim)">
+        No D3FEND countermeasures marked as implemented. <a href="/d3fend">Go to D3FEND →</a>
+      </div>`;
+      return;
+    }
+    renderD3fendDetail(cachedD3fend, root);
+  }
+}
+
+function renderNistDetail(data, root) {
+  const { covered, not_covered } = data;
   root.innerHTML = `
-    ${coverageSummaryHtml(actor, pct, barColor, summary, posture)}
-
-    <div class="section" style="margin-top:24px">
+    <div class="section" style="margin-top:8px">
       <div class="section-title" style="color:var(--danger)">
         Not Covered — ${not_covered.length} techniques
       </div>
       <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">
-        No implemented control mitigates these techniques. Controls shown are available in the crosswalk but not yet marked as implemented.
+        No implemented control mitigates these. Controls shown are available but not yet marked as implemented.
       </p>
-      ${not_covered.length ? renderTechniqueGroup(not_covered, false) : `<div style="color:var(--success);padding:12px 0;font-size:13px">✓ All techniques are covered.</div>`}
+      ${not_covered.length
+        ? renderTechniqueGroup(not_covered, "nist", false)
+        : `<div style="color:var(--success);padding:12px 0;font-size:13px">✓ All techniques are covered.</div>`}
     </div>
-
     <div class="section" style="margin-top:28px">
       <div class="section-title" style="color:var(--success)">
         Covered — ${covered.length} techniques
       </div>
-      ${covered.length ? renderTechniqueGroup(covered, true) : `<div style="color:var(--text-dim);padding:12px 0;font-size:13px">No techniques covered yet.</div>`}
+      ${covered.length
+        ? renderTechniqueGroup(covered, "nist", true)
+        : `<div style="color:var(--text-dim);padding:12px 0;font-size:13px">No techniques covered yet.</div>`}
+    </div>
+  `;
+}
+
+function renderD3fendDetail(data, root) {
+  const { covered, not_covered } = data;
+  root.innerHTML = `
+    <div class="section" style="margin-top:8px">
+      <div class="section-title" style="color:var(--danger)">
+        Not Detected — ${not_covered.length} techniques
+      </div>
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">
+        No implemented D3FEND countermeasure addresses these. Suggestions shown are deployed by others but not yet marked by you.
+      </p>
+      ${not_covered.length
+        ? renderTechniqueGroup(not_covered, "d3fend", false)
+        : `<div style="color:var(--success);padding:12px 0;font-size:13px">✓ All techniques have detection coverage.</div>`}
+    </div>
+    <div class="section" style="margin-top:28px">
+      <div class="section-title" style="color:var(--success)">
+        Detected — ${covered.length} techniques
+      </div>
+      ${covered.length
+        ? renderTechniqueGroup(covered, "d3fend", true)
+        : `<div style="color:var(--text-dim);padding:12px 0;font-size:13px">No techniques covered yet.</div>`}
     </div>
   `;
 }
@@ -160,20 +335,37 @@ function renderSingleGap(data, root) {
 async function runAllAnalysis() {
   const root = document.getElementById("gap-all-root");
   root.innerHTML = `<div class="loading">Analyzing all actors...</div>`;
+  cachedAllNist = null;
+  cachedAllD3fend = null;
 
-  try {
-    const data = await API.get("/api/gap/all");
-    renderAllGap(data, root);
-  } catch (e) {
-    root.innerHTML = `<div class="empty-state">Failed: ${e.message}</div>`;
+  const [nistResult, d3fResult] = await Promise.allSettled([
+    API.get("/api/gap/all"),
+    API.get("/api/gap/d3fend/all"),
+  ]);
+
+  if (nistResult.status === "fulfilled") cachedAllNist = nistResult.value;
+  if (d3fResult.status === "fulfilled") cachedAllD3fend = d3fResult.value;
+
+  const activeData = activeAllFramework === "nist" ? cachedAllNist : cachedAllD3fend;
+  if (!activeData) {
+    root.innerHTML = `<div class="empty-state">Analysis failed.</div>`;
+    return;
   }
+  renderAllGap(activeData, root, activeAllFramework);
 }
 
-function renderAllGap(data, root) {
+function renderAllGap(data, root, framework) {
   const { posture, actors } = data;
+  const countKey = framework === "nist" ? "implemented_control_count" : "implemented_count";
 
-  if (!posture.implemented_control_count) {
-    root.innerHTML = noPostureHtml("any actor");
+  if (!posture[countKey]) {
+    const href = framework === "nist" ? "/controls" : "/d3fend";
+    const label = framework === "nist" ? "Controls" : "D3FEND";
+    root.innerHTML = `<div class="gap-no-posture">
+      <div style="font-size:32px;margin-bottom:12px">⚙️</div>
+      <div style="font-weight:600;margin-bottom:8px">No ${label} items marked as implemented</div>
+      <a href="${href}" class="btn btn-primary">Go to ${label} →</a>
+    </div>`;
     return;
   }
 
@@ -184,7 +376,7 @@ function renderAllGap(data, root) {
 
   const rows = actors.map(a => {
     const pct = a.coverage_pct;
-    const barColor = pct >= 70 ? "var(--success)" : pct >= 40 ? "var(--warn)" : "var(--danger)";
+    const barColor = pctColor(pct);
     const flag = countryFlag(a.country_code);
     return `
       <div class="all-actors-row" onclick="drillDown(${a.id}, '${a.name.replace(/'/g, "\\'")}')">
@@ -206,9 +398,11 @@ function renderAllGap(data, root) {
     `;
   }).join("");
 
+  const implCount = posture[countKey];
+  const label = framework === "nist" ? "controls" : "countermeasures";
   root.innerHTML = `
     <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;font-family:var(--mono)">
-      ${actors.length} actors · ${posture.implemented_control_count} controls implemented · sorted by exposure (worst first)
+      ${actors.length} actors · ${implCount} ${label} implemented · sorted by exposure (worst first)
     </div>
     <div style="display:grid;grid-template-columns:1fr auto;gap:4px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;padding:0 0 6px;border-bottom:1px solid var(--border);margin-bottom:6px">
       <span>Actor</span>
@@ -220,67 +414,36 @@ function renderAllGap(data, root) {
 }
 
 function drillDown(actorId, actorName) {
-  // Switch to single-actor tab and run the analysis directly — do NOT go
-  // through the listbox, which may not have this actor loaded yet.
   setTab("single");
-
-  // Update the filter so the listbox shows this actor if it's present
   document.getElementById("actor-filter").value = actorName;
   filterActors();
-  // Try to highlight it in the listbox (best-effort, non-blocking)
   document.getElementById("actor-listbox").value = actorId;
-
-  // Run the analysis immediately using the ID we already have
   analyzeActor(actorId);
 }
 
-async function analyzeActor(actorId) {
-  const root = document.getElementById("gap-single-root");
-  root.innerHTML = `<div class="loading">Analyzing...</div>`;
-  try {
-    const data = await API.get(`/api/gap/${actorId}`);
-    renderSingleGap(data, root);
-  } catch (e) {
-    root.innerHTML = `<div class="empty-state">Failed: ${e.message}</div>`;
-  }
+// ---- Shared rendering helpers ----
+function pctColor(pct) {
+  return pct >= 70 ? "var(--success)" : pct >= 40 ? "var(--warn)" : "var(--danger)";
 }
 
-// ---- Shared rendering helpers ----
-function noPostureHtml(actorName) {
+function noPostureHtml() {
   return `
     <div class="gap-no-posture">
       <div style="font-size:32px;margin-bottom:12px">⚙️</div>
-      <div style="font-weight:600;margin-bottom:8px">No controls marked as implemented</div>
-      <p style="color:var(--text-dim);font-size:13px;max-width:400px;margin:0 auto 16px">
-        Go to the <a href="/controls">Controls page</a> and toggle the controls your org has deployed.
+      <div style="font-weight:600;margin-bottom:8px">No posture data yet</div>
+      <p style="color:var(--text-dim);font-size:13px;max-width:440px;margin:0 auto 16px">
+        Mark NIST controls on the <a href="/controls">Controls page</a> and
+        D3FEND countermeasures on the <a href="/d3fend">D3FEND page</a>.
       </p>
-      <a href="/controls" class="btn btn-primary">Go to Controls →</a>
-    </div>
-  `;
-}
-
-function coverageSummaryHtml(actor, pct, barColor, summary, posture) {
-  return `
-    <div class="gap-summary">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
-        <span style="font-size:15px;font-weight:600">
-          <a href="/actor/${actor.id}" style="color:inherit">${actor.name}</a>
-          ${actor.attack_group_id ? `<span class="tag tag-accent" style="margin-left:8px;font-size:12px">${actor.attack_group_id}</span>` : ""}
-        </span>
-        <span style="font-family:var(--mono);font-size:22px;font-weight:700;color:${barColor}">${pct}%</span>
-      </div>
-      <div class="coverage-bar-bg">
-        <div class="coverage-bar-fill" style="width:${pct}%;background:${barColor}"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--text-dim);font-family:var(--mono)">
-        <span>${summary.covered} of ${summary.total_techniques} techniques covered</span>
-        <span>${posture.implemented_control_count} controls implemented</span>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <a href="/controls" class="btn btn-primary">NIST Controls →</a>
+        <a href="/d3fend" class="btn">D3FEND →</a>
       </div>
     </div>
   `;
 }
 
-function renderTechniqueGroup(techniques, isCovered) {
+function renderTechniqueGroup(techniques, framework, isCovered) {
   const byTactic = {};
   for (const t of techniques) {
     (byTactic[t.tactic] = byTactic[t.tactic] || []).push(t);
@@ -289,45 +452,104 @@ function renderTechniqueGroup(techniques, isCovered) {
     const ai = TACTIC_ORDER.indexOf(a), bi = TACTIC_ORDER.indexOf(b);
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
   });
+
   return tacticKeys.map(tactic => {
     const rows = byTactic[tactic].map(t => {
-      if (isCovered) {
-        const controlTags = (t.implemented_controls || []).map(c =>
-          `<span class="control-badge" title="${c.name}">${c.control_id}</span>`
-        ).join("");
-        return `
-          <div class="technique-item">
-            <div class="technique-row">
-              <span class="technique-id">${t.attack_id}</span>
-              <span>${t.name}</span>
-              ${t.is_subtechnique ? tag("sub", "") : ""}
-            </div>
-            ${controlTags ? `<div class="technique-controls">${controlTags}</div>` : ""}
-          </div>`;
+      if (framework === "nist") {
+        return renderNistTechniqueRow(t, isCovered);
       } else {
-        const availableTags = (t.available_controls || []).slice(0, 6).map(c =>
-          `<a href="/controls/${c.control_id}" class="control-badge gap-hint" title="${c.name}">${c.control_id}</a>`
-        ).join("");
-        const moreCount = (t.available_controls || []).length - 6;
-        return `
-          <div class="technique-item">
-            <div class="technique-row">
-              <span class="technique-id">${t.attack_id}</span>
-              <span>${t.name}</span>
-              ${t.is_subtechnique ? tag("sub", "") : ""}
-              ${!t.total_controls ? `<span class="tag" style="font-size:10px;opacity:0.6">no mapping</span>` : ""}
-            </div>
-            ${availableTags ? `
-              <div class="technique-controls">
-                <span style="font-size:10px;color:var(--text-dim);margin-right:4px">would help:</span>
-                ${availableTags}
-                ${moreCount > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreCount} more</span>` : ""}
-              </div>` : ""}
-          </div>`;
+        return renderD3fendTechniqueRow(t, isCovered);
       }
     }).join("");
     return `<div class="tactic-block"><div class="tactic-name">${tacticLabel(tactic)}</div>${rows}</div>`;
   }).join("");
+}
+
+function renderNistTechniqueRow(t, isCovered) {
+  if (isCovered) {
+    const controlTags = (t.implemented_controls || []).map(c =>
+      `<span class="control-badge" title="${c.name}">${c.control_id}</span>`
+    ).join("");
+    return `
+      <div class="technique-item">
+        <div class="technique-row">
+          <span class="technique-id">${t.attack_id}</span>
+          <span>${t.name}</span>
+          ${t.is_subtechnique ? tag("sub", "") : ""}
+        </div>
+        ${controlTags ? `<div class="technique-controls">${controlTags}</div>` : ""}
+      </div>`;
+  } else {
+    const availableTags = (t.available_controls || []).slice(0, 6).map(c =>
+      `<a href="/controls/${c.control_id}" class="control-badge gap-hint" title="${c.name}">${c.control_id}</a>`
+    ).join("");
+    const moreCount = (t.available_controls || []).length - 6;
+    return `
+      <div class="technique-item">
+        <div class="technique-row">
+          <span class="technique-id">${t.attack_id}</span>
+          <span>${t.name}</span>
+          ${t.is_subtechnique ? tag("sub", "") : ""}
+          ${!t.total_controls ? `<span class="tag" style="font-size:10px;opacity:0.6">no mapping</span>` : ""}
+        </div>
+        ${availableTags ? `
+          <div class="technique-controls">
+            <span style="font-size:10px;color:var(--text-dim);margin-right:4px">would help:</span>
+            ${availableTags}
+            ${moreCount > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreCount} more</span>` : ""}
+          </div>` : ""}
+      </div>`;
+  }
+}
+
+const D3FEND_TACTIC_COLORS = {
+  Harden:  "var(--warn)",
+  Detect:  "#7c6fcd",
+  Isolate: "var(--accent)",
+  Deceive: "#c084fc",
+  Evict:   "var(--danger)",
+  Restore: "var(--success)",
+};
+
+function d3fendBadge(cm, isHint) {
+  const color = D3FEND_TACTIC_COLORS[cm.tactic] || "var(--text-dim)";
+  const cls = isHint ? "control-badge gap-hint" : "control-badge";
+  const href = `https://d3fend.mitre.org/technique/${cm.d3fend_id}/`;
+  const inner = `<a href="${href}" target="_blank" style="color:inherit" title="${cm.name} (${cm.tactic})">${cm.d3fend_id}</a>`;
+  return `<span class="${cls}" style="${isHint ? `border-color:${color}40;color:${color}` : ''}">${inner}</span>`;
+}
+
+function renderD3fendTechniqueRow(t, isCovered) {
+  if (isCovered) {
+    const badges = (t.implemented_countermeasures || []).map(c => d3fendBadge(c, false)).join("");
+    return `
+      <div class="technique-item">
+        <div class="technique-row">
+          <span class="technique-id">${t.attack_id}</span>
+          <span>${t.name}</span>
+          ${t.is_subtechnique ? tag("sub", "") : ""}
+        </div>
+        ${badges ? `<div class="technique-controls">${badges}</div>` : ""}
+      </div>`;
+  } else {
+    const availBadges = (t.available_countermeasures || []).slice(0, 6).map(c => d3fendBadge(c, true)).join("");
+    const moreCount = (t.available_countermeasures || []).length - 6;
+    return `
+      <div class="technique-item">
+        <div class="technique-row">
+          <span class="technique-id">${t.attack_id}</span>
+          <span>${t.name}</span>
+          ${t.is_subtechnique ? tag("sub", "") : ""}
+          ${!t.total_countermeasures ? `<span class="tag" style="font-size:10px;opacity:0.6">no mapping</span>` : ""}
+        </div>
+        ${availBadges ? `
+          <div class="technique-controls">
+            <span style="font-size:10px;color:var(--text-dim);margin-right:4px">countermeasures:</span>
+            ${availBadges}
+            ${moreCount > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreCount} more</span>` : ""}
+          </div>` : ""}
+      </div>`;
+  }
 }
 
 // ---- Init ----
