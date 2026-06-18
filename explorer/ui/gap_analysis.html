@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gap Analysis — cti-stitcher</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="shell">
+
+  <nav class="topbar">
+    <span class="topbar-logo">cti-stitcher</span>
+    <div class="topbar-nav">
+      <a href="/">Explorer</a>
+      <a href="/controls">Controls</a>
+      <a href="/gap-analysis" class="active">Gap Analysis</a>
+      <a href="/settings">Connectors</a>
+    </div>
+    <span class="sync-status" id="sync-status"></span>
+  </nav>
+
+  <main class="content">
+    <div style="margin-bottom:20px">
+      <h1 style="font-size:20px;font-weight:700;margin-bottom:4px">Gap Analysis</h1>
+      <p style="color:var(--text-dim);font-size:13px">
+        See how your control posture stacks up against tracked threat actors.
+        Mark controls as implemented on the <a href="/controls">Controls page</a>.
+      </p>
+    </div>
+
+    <!-- Tabs -->
+    <div class="gap-tabs" style="margin-bottom:24px">
+      <button class="gap-tab active" id="tab-single" onclick="setTab('single')">Single Actor</button>
+      <button class="gap-tab" id="tab-all" onclick="setTab('all')">All Actors</button>
+    </div>
+
+    <!-- Single Actor panel -->
+    <div id="panel-single">
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:24px">
+        <div style="flex:1;max-width:420px">
+          <input
+            id="actor-filter"
+            type="text"
+            class="search-input"
+            placeholder="Search actors..."
+            oninput="filterActors()"
+            style="width:100%;margin-bottom:6px"
+          />
+          <select
+            id="actor-listbox"
+            size="8"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:var(--font);padding:4px 0;outline:none"
+            onchange="runSingleAnalysis()"
+          ></select>
+        </div>
+      </div>
+      <div id="gap-single-root"></div>
+    </div>
+
+    <!-- All Actors panel -->
+    <div id="panel-all" style="display:none">
+      <button class="btn btn-primary" onclick="runAllAnalysis()" style="margin-bottom:20px">
+        Analyze All Actors
+      </button>
+      <div id="gap-all-root"></div>
+    </div>
+
+  </main>
+
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+let allActors = [];
+let activeTab = "single";
+
+const TACTIC_ORDER = [
+  "reconnaissance", "resource-development", "initial-access", "execution",
+  "persistence", "privilege-escalation", "defense-evasion", "credential-access",
+  "discovery", "lateral-movement", "collection", "command-and-control",
+  "exfiltration", "impact", "unknown"
+];
+
+function tacticLabel(t) {
+  return t.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ---- Tab switching ----
+function setTab(tab) {
+  activeTab = tab;
+  document.getElementById("tab-single").classList.toggle("active", tab === "single");
+  document.getElementById("tab-all").classList.toggle("active", tab === "all");
+  document.getElementById("panel-single").style.display = tab === "single" ? "" : "none";
+  document.getElementById("panel-all").style.display = tab === "all" ? "" : "none";
+}
+
+// ---- Actor listbox / filter ----
+function populateListbox(actors) {
+  const lb = document.getElementById("actor-listbox");
+  lb.innerHTML = actors.map(a =>
+    `<option value="${a.id}" style="padding:5px 10px">${a.name}${a.attack_group_id ? " (" + a.attack_group_id + ")" : ""}</option>`
+  ).join("");
+}
+
+function filterActors() {
+  const q = document.getElementById("actor-filter").value.toLowerCase();
+  const filtered = q
+    ? allActors.filter(a =>
+        a.name.toLowerCase().includes(q) ||
+        (a.attack_group_id || "").toLowerCase().includes(q) ||
+        (a.aliases || []).some(al => al.alias.toLowerCase().includes(q))
+      )
+    : allActors;
+  populateListbox(filtered);
+}
+
+// ---- Single actor analysis ----
+function runSingleAnalysis() {
+  const lb = document.getElementById("actor-listbox");
+  const actorId = lb.value;
+  if (!actorId) return;
+  analyzeActor(actorId);
+}
+
+function renderSingleGap(data, root) {
+  const { actor, summary, posture, covered, not_covered } = data;
+
+  if (!posture.implemented_control_count) {
+    root.innerHTML = noPostureHtml(actor.name);
+    return;
+  }
+
+  const pct = summary.coverage_pct;
+  const barColor = pct >= 70 ? "var(--success)" : pct >= 40 ? "var(--warn)" : "var(--danger)";
+
+  root.innerHTML = `
+    ${coverageSummaryHtml(actor, pct, barColor, summary, posture)}
+
+    <div class="section" style="margin-top:24px">
+      <div class="section-title" style="color:var(--danger)">
+        Not Covered — ${not_covered.length} techniques
+      </div>
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">
+        No implemented control mitigates these techniques. Controls shown are available in the crosswalk but not yet marked as implemented.
+      </p>
+      ${not_covered.length ? renderTechniqueGroup(not_covered, false) : `<div style="color:var(--success);padding:12px 0;font-size:13px">✓ All techniques are covered.</div>`}
+    </div>
+
+    <div class="section" style="margin-top:28px">
+      <div class="section-title" style="color:var(--success)">
+        Covered — ${covered.length} techniques
+      </div>
+      ${covered.length ? renderTechniqueGroup(covered, true) : `<div style="color:var(--text-dim);padding:12px 0;font-size:13px">No techniques covered yet.</div>`}
+    </div>
+  `;
+}
+
+// ---- All actors analysis ----
+async function runAllAnalysis() {
+  const root = document.getElementById("gap-all-root");
+  root.innerHTML = `<div class="loading">Analyzing all actors...</div>`;
+
+  try {
+    const data = await API.get("/api/gap/all");
+    renderAllGap(data, root);
+  } catch (e) {
+    root.innerHTML = `<div class="empty-state">Failed: ${e.message}</div>`;
+  }
+}
+
+function renderAllGap(data, root) {
+  const { posture, actors } = data;
+
+  if (!posture.implemented_control_count) {
+    root.innerHTML = noPostureHtml("any actor");
+    return;
+  }
+
+  if (!actors.length) {
+    root.innerHTML = `<div class="empty-state">No actors with technique data found.</div>`;
+    return;
+  }
+
+  const rows = actors.map(a => {
+    const pct = a.coverage_pct;
+    const barColor = pct >= 70 ? "var(--success)" : pct >= 40 ? "var(--warn)" : "var(--danger)";
+    const flag = countryFlag(a.country_code);
+    return `
+      <div class="all-actors-row" onclick="drillDown(${a.id}, '${a.name.replace(/'/g, "\\'")}')">
+        <div class="all-actors-name">
+          <span style="font-size:14px;margin-right:4px">${flag}</span>
+          <span style="font-weight:500">${a.name}</span>
+          ${a.attack_group_id ? `<span class="tag tag-accent" style="font-size:10px;margin-left:6px">${a.attack_group_id}</span>` : ""}
+        </div>
+        <div class="all-actors-bar-wrap">
+          <div class="coverage-bar-bg" style="height:6px">
+            <div class="coverage-bar-fill" style="width:${pct}%;background:${barColor}"></div>
+          </div>
+        </div>
+        <div class="all-actors-pct" style="color:${barColor}">${pct}%</div>
+        <div class="all-actors-counts" style="color:var(--text-dim)">
+          ${a.covered}/${a.total_techniques}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  root.innerHTML = `
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;font-family:var(--mono)">
+      ${actors.length} actors · ${posture.implemented_control_count} controls implemented · sorted by exposure (worst first)
+    </div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:4px;font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;padding:0 0 6px;border-bottom:1px solid var(--border);margin-bottom:6px">
+      <span>Actor</span>
+      <span style="text-align:right">covered</span>
+    </div>
+    <div class="all-actors-list">${rows}</div>
+    <p style="font-size:12px;color:var(--text-dim);margin-top:10px">Click any row to see the full breakdown for that actor.</p>
+  `;
+}
+
+function drillDown(actorId, actorName) {
+  // Switch to single-actor tab and run the analysis directly — do NOT go
+  // through the listbox, which may not have this actor loaded yet.
+  setTab("single");
+
+  // Update the filter so the listbox shows this actor if it's present
+  document.getElementById("actor-filter").value = actorName;
+  filterActors();
+  // Try to highlight it in the listbox (best-effort, non-blocking)
+  document.getElementById("actor-listbox").value = actorId;
+
+  // Run the analysis immediately using the ID we already have
+  analyzeActor(actorId);
+}
+
+async function analyzeActor(actorId) {
+  const root = document.getElementById("gap-single-root");
+  root.innerHTML = `<div class="loading">Analyzing...</div>`;
+  try {
+    const data = await API.get(`/api/gap/${actorId}`);
+    renderSingleGap(data, root);
+  } catch (e) {
+    root.innerHTML = `<div class="empty-state">Failed: ${e.message}</div>`;
+  }
+}
+
+// ---- Shared rendering helpers ----
+function noPostureHtml(actorName) {
+  return `
+    <div class="gap-no-posture">
+      <div style="font-size:32px;margin-bottom:12px">⚙️</div>
+      <div style="font-weight:600;margin-bottom:8px">No controls marked as implemented</div>
+      <p style="color:var(--text-dim);font-size:13px;max-width:400px;margin:0 auto 16px">
+        Go to the <a href="/controls">Controls page</a> and toggle the controls your org has deployed.
+      </p>
+      <a href="/controls" class="btn btn-primary">Go to Controls →</a>
+    </div>
+  `;
+}
+
+function coverageSummaryHtml(actor, pct, barColor, summary, posture) {
+  return `
+    <div class="gap-summary">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+        <span style="font-size:15px;font-weight:600">
+          <a href="/actor/${actor.id}" style="color:inherit">${actor.name}</a>
+          ${actor.attack_group_id ? `<span class="tag tag-accent" style="margin-left:8px;font-size:12px">${actor.attack_group_id}</span>` : ""}
+        </span>
+        <span style="font-family:var(--mono);font-size:22px;font-weight:700;color:${barColor}">${pct}%</span>
+      </div>
+      <div class="coverage-bar-bg">
+        <div class="coverage-bar-fill" style="width:${pct}%;background:${barColor}"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--text-dim);font-family:var(--mono)">
+        <span>${summary.covered} of ${summary.total_techniques} techniques covered</span>
+        <span>${posture.implemented_control_count} controls implemented</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderTechniqueGroup(techniques, isCovered) {
+  const byTactic = {};
+  for (const t of techniques) {
+    (byTactic[t.tactic] = byTactic[t.tactic] || []).push(t);
+  }
+  const tacticKeys = Object.keys(byTactic).sort((a, b) => {
+    const ai = TACTIC_ORDER.indexOf(a), bi = TACTIC_ORDER.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  return tacticKeys.map(tactic => {
+    const rows = byTactic[tactic].map(t => {
+      if (isCovered) {
+        const controlTags = (t.implemented_controls || []).map(c =>
+          `<span class="control-badge" title="${c.name}">${c.control_id}</span>`
+        ).join("");
+        return `
+          <div class="technique-item">
+            <div class="technique-row">
+              <span class="technique-id">${t.attack_id}</span>
+              <span>${t.name}</span>
+              ${t.is_subtechnique ? tag("sub", "") : ""}
+            </div>
+            ${controlTags ? `<div class="technique-controls">${controlTags}</div>` : ""}
+          </div>`;
+      } else {
+        const availableTags = (t.available_controls || []).slice(0, 6).map(c =>
+          `<a href="/controls/${c.control_id}" class="control-badge gap-hint" title="${c.name}">${c.control_id}</a>`
+        ).join("");
+        const moreCount = (t.available_controls || []).length - 6;
+        return `
+          <div class="technique-item">
+            <div class="technique-row">
+              <span class="technique-id">${t.attack_id}</span>
+              <span>${t.name}</span>
+              ${t.is_subtechnique ? tag("sub", "") : ""}
+              ${!t.total_controls ? `<span class="tag" style="font-size:10px;opacity:0.6">no mapping</span>` : ""}
+            </div>
+            ${availableTags ? `
+              <div class="technique-controls">
+                <span style="font-size:10px;color:var(--text-dim);margin-right:4px">would help:</span>
+                ${availableTags}
+                ${moreCount > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreCount} more</span>` : ""}
+              </div>` : ""}
+          </div>`;
+      }
+    }).join("");
+    return `<div class="tactic-block"><div class="tactic-name">${tacticLabel(tactic)}</div>${rows}</div>`;
+  }).join("");
+}
+
+// ---- Init ----
+async function load() {
+  loadSyncStatus(document.getElementById("sync-status"));
+  allActors = await API.get("/api/actors");
+  populateListbox(allActors);
+
+  // Pre-select from URL query param
+  const params = new URLSearchParams(window.location.search);
+  const preselect = params.get("actor");
+  if (preselect) {
+    document.getElementById("actor-listbox").value = preselect;
+    runSingleAnalysis();
+  }
+}
+
+load();
+</script>
+</body>
+</html>

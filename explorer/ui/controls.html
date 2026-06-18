@@ -14,20 +14,30 @@
     <div class="topbar-nav">
       <a href="/">Explorer</a>
       <a href="/controls" class="active">Controls</a>
+      <a href="/gap-analysis">Gap Analysis</a>
       <a href="/settings">Connectors</a>
     </div>
     <span class="sync-status" id="sync-status"></span>
   </nav>
 
   <main class="content">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div>
         <h1 style="font-size:20px;font-weight:700;margin-bottom:4px">NIST 800-53 Controls</h1>
         <p style="color:var(--text-dim);font-size:13px">
-          Reverse lookup: pick a control to see which techniques it mitigates and which threat actors use them.
+          Toggle controls your org has implemented to power gap analysis. Click a control ID to see its techniques and actors.
         </p>
       </div>
-      <span id="control-count" style="font-family:var(--mono);font-size:12px;color:var(--text-dim)"></span>
+      <div style="text-align:right">
+        <span id="implemented-count" style="font-family:var(--mono);font-size:12px;color:var(--success)"></span><br>
+        <span id="control-count" style="font-family:var(--mono);font-size:12px;color:var(--text-dim)"></span>
+      </div>
+    </div>
+
+    <div style="margin-bottom:16px">
+      <a href="/gap-analysis" class="btn btn-primary" style="font-size:12px;padding:6px 14px">
+        → Run Gap Analysis
+      </a>
     </div>
 
     <!-- Family filter pills -->
@@ -42,15 +52,24 @@
 <script src="/static/app.js"></script>
 <script>
 let allControls = [];
+let implementedIds = new Set(); // set of control_id strings e.g. "AC-02"
 let activeFamily = "ALL";
 
 async function load() {
   loadSyncStatus(document.getElementById("sync-status"));
 
-  const controls = await API.get("/api/controls");
+  const [controls, posture] = await Promise.all([
+    API.get("/api/controls"),
+    API.get("/api/posture"),
+  ]);
   allControls = controls;
 
-  // Build family pills from distinct groups
+  // posture returns DB PKs — map back to control_id strings
+  const postureIds = new Set(posture.implemented_control_ids);
+  controls.forEach(c => {
+    if (postureIds.has(c.id)) implementedIds.add(c.control_id);
+  });
+
   const families = ["ALL", ...new Set(controls.map(c => c.control_group).filter(Boolean).sort())];
   renderFamilyPills(families);
   renderControls();
@@ -68,11 +87,43 @@ function renderFamilyPills(families) {
 
 function setFamily(f) {
   activeFamily = f;
-  // Re-render pills to update active state
   document.querySelectorAll(".family-pill").forEach(btn => {
     btn.classList.toggle("active", btn.textContent === f);
   });
   renderControls();
+}
+
+function updateCounts(filtered) {
+  const impl = filtered.filter(c => implementedIds.has(c.control_id)).length;
+  document.getElementById("implemented-count").textContent =
+    impl > 0 ? `${impl} implemented` : "";
+  document.getElementById("control-count").textContent =
+    `${filtered.length} controls`;
+}
+
+async function toggleControl(event, controlId) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const resp = await API.post(`/api/posture/${controlId}/toggle`);
+  if (resp.implemented) {
+    implementedIds.add(controlId);
+  } else {
+    implementedIds.delete(controlId);
+  }
+
+  // Update just this card's toggle button without re-rendering the whole list
+  const btn = document.querySelector(`[data-toggle="${controlId}"]`);
+  if (btn) {
+    btn.classList.toggle("posture-on", resp.implemented);
+    btn.title = resp.implemented ? "Mark as not implemented" : "Mark as implemented";
+    btn.textContent = resp.implemented ? "✓ Implemented" : "Mark implemented";
+  }
+
+  const filtered = activeFamily === "ALL"
+    ? allControls
+    : allControls.filter(c => c.control_group === activeFamily);
+  updateCounts(filtered);
 }
 
 function renderControls() {
@@ -80,8 +131,7 @@ function renderControls() {
     ? allControls
     : allControls.filter(c => c.control_group === activeFamily);
 
-  document.getElementById("control-count").textContent =
-    `${filtered.length} controls`;
+  updateCounts(filtered);
 
   const list = document.getElementById("controls-list");
   if (!filtered.length) {
@@ -89,25 +139,41 @@ function renderControls() {
     return;
   }
 
-  list.innerHTML = filtered.map(c => `
-    <a href="/controls/${c.control_id}" class="control-card">
-      <div class="control-card-left">
-        <span class="control-card-id">${c.control_id}</span>
-        <span class="control-card-name">${c.name}</span>
+  list.innerHTML = filtered.map(c => {
+    const impl = implementedIds.has(c.control_id);
+    return `
+      <div class="control-card ${impl ? "control-card-impl" : ""}">
+        <a href="/controls/${c.control_id}" class="control-card-left" style="text-decoration:none;color:inherit;flex:1;display:flex;align-items:center;gap:12px">
+          <span class="control-card-id">${c.control_id}</span>
+          <span class="control-card-name">${c.name}</span>
+        </a>
+        <div class="control-card-right">
+          <span class="control-stat" title="Techniques mitigated">
+            <span class="control-stat-num">${c.technique_count}</span>
+            <span class="control-stat-label">techniques</span>
+          </span>
+          <span class="control-stat" title="Threat actors using those techniques">
+            <span class="control-stat-num ${c.actor_count > 0 ? "stat-accent" : ""}">${c.actor_count}</span>
+            <span class="control-stat-label">actors</span>
+          </span>
+          <button
+            class="posture-toggle ${impl ? "posture-on" : ""}"
+            data-toggle="${c.control_id}"
+            title="${impl ? "Mark as not implemented" : "Mark as implemented"}"
+            onclick="toggleControl(event, '${c.control_id}')"
+          >${impl ? "✓ Implemented" : "Mark implemented"}</button>
+        </div>
       </div>
-      <div class="control-card-right">
-        <span class="control-stat" title="Techniques mitigated">
-          <span class="control-stat-num">${c.technique_count}</span>
-          <span class="control-stat-label">techniques</span>
-        </span>
-        <span class="control-stat" title="Threat actors using those techniques">
-          <span class="control-stat-num ${c.actor_count > 0 ? "stat-accent" : ""}">${c.actor_count}</span>
-          <span class="control-stat-label">actors</span>
-        </span>
-      </div>
-    </a>
-  `).join("");
+    `;
+  }).join("");
 }
+
+// Extend API with POST support
+API.post = async (path) => {
+  const resp = await fetch(path, { method: "POST" });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return resp.json();
+};
 
 load();
 </script>

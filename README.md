@@ -83,7 +83,7 @@ See `core/ingest/README.md` for details.
 - [x] v2.5: Controls browse page — reverse lookup: pick a control, see which techniques it mitigates and which actors use them
 - [ ] v1.5: Geographic map overlay
 - [ ] v2.5+: CIS Controls bridge (needs a current, machine-readable CIS<->ATT&CK mapping — none exists yet)
-- [ ] v3: Risk mapper gap analysis (org provides control posture, get coverage gaps per actor); TTP-to-detection gap analyzer (ATT&CK Navigator layer input)
+- [x] v3: Risk mapper gap analysis — mark your implemented controls, get per-actor coverage % and prioritized remediation hints for uncovered techniques
 - [ ] v4: Dissemination and feedback loop tracker
 
 ---

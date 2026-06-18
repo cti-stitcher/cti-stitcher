@@ -26,7 +26,7 @@ def list_actors(
     industry: Optional[str] = Query(None, description="Filter by target industry"),
     region: Optional[str] = Query(None, description="Filter by target region or country"),
     country_code: Optional[str] = Query(None, description="Filter by actor origin country (ISO code)"),
-    limit: int = Query(200, le=500),
+    limit: int = Query(2000, le=5000),
     db: Session = Depends(_db),
 ):
     """

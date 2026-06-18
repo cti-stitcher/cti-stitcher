@@ -206,6 +206,23 @@ class TechniqueControl(Base):
     control: Mapped["Control"] = relationship("Control", back_populates="techniques")
 
 
+class ControlPosture(Base):
+    """
+    Tracks which controls the org has implemented.
+    User-managed via the Controls UI — not populated by any connector.
+    One row per control; implemented=True means the org has this control deployed.
+    """
+    __tablename__ = "control_posture"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    control_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("controls.id"), unique=True, nullable=False, index=True
+    )
+    implemented: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    control: Mapped["Control"] = relationship("Control")
+
+
 # ---------------------------------------------------------------------------
 # Sync log
 # ---------------------------------------------------------------------------
