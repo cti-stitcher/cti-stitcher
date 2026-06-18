@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control — cti-stitcher</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="shell">
+
+  <nav class="topbar">
+    <span class="topbar-logo">cti-stitcher</span>
+    <div class="topbar-nav">
+      <a href="/">Explorer</a>
+      <a href="/controls" class="active">Controls</a>
+      <a href="/settings">Connectors</a>
+    </div>
+    <span class="sync-status" id="sync-status"></span>
+  </nav>
+
+  <main class="content">
+    <div id="control-root"><div class="loading">Loading...</div></div>
+  </main>
+
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+const controlId = window.location.pathname.split("/").pop().toUpperCase();
+
+const TACTIC_ORDER = [
+  "reconnaissance", "resource-development", "initial-access", "execution",
+  "persistence", "privilege-escalation", "defense-evasion", "credential-access",
+  "discovery", "lateral-movement", "collection", "command-and-control",
+  "exfiltration", "impact", "unknown"
+];
+
+function tacticLabel(t) {
+  return t.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+async function load() {
+  loadSyncStatus(document.getElementById("sync-status"));
+  const root = document.getElementById("control-root");
+
+  try {
+    const c = await API.get(`/api/controls/${controlId}`);
+    document.title = `${c.control_id} — cti-stitcher`;
+
+    // Group techniques by primary tactic
+    const byTactic = {};
+    for (const t of c.techniques) {
+      const tactic = t.tactic || "unknown";
+      (byTactic[tactic] = byTactic[tactic] || []).push(t);
+    }
+
+    const tacticKeys = Object.keys(byTactic).sort((a, b) => {
+      const ai = TACTIC_ORDER.indexOf(a), bi = TACTIC_ORDER.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+
+    const tacticBlocks = tacticKeys.map(tactic => {
+      const rows = byTactic[tactic].map(t => {
+        const actorTags = t.actors.map(a =>
+          `<a href="/actor/${a.id}" class="actor-tag">${a.name}</a>`
+        ).join("");
+
+        return `
+          <div class="technique-item">
+            <div class="technique-row">
+              <span class="technique-id">${t.attack_id}</span>
+              <span>${t.name}</span>
+              ${t.is_subtechnique ? tag("sub", "") : ""}
+            </div>
+            ${actorTags ? `<div class="technique-actors">${actorTags}</div>` : ""}
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div class="tactic-block">
+          <div class="tactic-name">${tacticLabel(tactic)}</div>
+          ${rows}
+        </div>
+      `;
+    }).join("") || `<div style="color:var(--text-dim)">No techniques mapped to this control.</div>`;
+
+    // NIST 800-53 control page URL
+    const nistFamilyMap = {
+      AC: "access-control", AU: "audit-and-accountability", CA: "assessment-authorization-monitoring",
+      CM: "configuration-management", CP: "contingency-planning", IA: "identification-and-authentication",
+      IR: "incident-response", MA: "maintenance", MP: "media-protection", PE: "physical-and-environmental-protection",
+      PL: "planning", PM: "program-management", PS: "personnel-security", PT: "pii-processing-and-transparency",
+      RA: "risk-assessment", SA: "system-and-services-acquisition", SC: "system-and-communications-protection",
+      SI: "system-and-information-integrity", SR: "supply-chain-risk-management",
+    };
+    const family = c.control_group || c.control_id.split("-")[0];
+    const nistFamily = nistFamilyMap[family];
+    const nistLink = nistFamily
+      ? `<a class="btn btn-ghost" href="https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/SP_800_53_5_1_1/home?element=${c.control_id}" target="_blank">NIST CSRC ↗</a>`
+      : "";
+
+    root.innerHTML = `
+      <div style="margin-bottom:12px">
+        <a href="/controls" style="color:var(--text-dim);font-size:13px">← Back to Controls</a>
+      </div>
+
+      <div class="profile-header">
+        <div>
+          <div class="profile-name">
+            <span class="tag tag-accent" style="font-size:18px;margin-right:10px">${c.control_id}</span>
+            ${c.name}
+          </div>
+          <div class="profile-meta" style="margin-top:8px">
+            <span>Family: <strong>${c.control_group || "—"}</strong></span>
+            <span>${c.technique_count} techniques</span>
+            <span>${c.actor_count} actors</span>
+            <span style="color:var(--text-dim);font-size:11px">NIST 800-53 rev5</span>
+          </div>
+        </div>
+        <div class="profile-links">${nistLink}</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Techniques mitigated (${c.technique_count})</div>
+        <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">
+          Actor tags show which tracked threat actors use each technique — click to open their profile.
+        </p>
+        ${tacticBlocks}
+      </div>
+    `;
+  } catch (e) {
+    root.innerHTML = `<div class="empty-state">Failed to load control: ${e.message}</div>`;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

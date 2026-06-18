@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Controls — cti-stitcher</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="shell">
+
+  <nav class="topbar">
+    <span class="topbar-logo">cti-stitcher</span>
+    <div class="topbar-nav">
+      <a href="/">Explorer</a>
+      <a href="/controls" class="active">Controls</a>
+      <a href="/settings">Connectors</a>
+    </div>
+    <span class="sync-status" id="sync-status"></span>
+  </nav>
+
+  <main class="content">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <h1 style="font-size:20px;font-weight:700;margin-bottom:4px">NIST 800-53 Controls</h1>
+        <p style="color:var(--text-dim);font-size:13px">
+          Reverse lookup: pick a control to see which techniques it mitigates and which threat actors use them.
+        </p>
+      </div>
+      <span id="control-count" style="font-family:var(--mono);font-size:12px;color:var(--text-dim)"></span>
+    </div>
+
+    <!-- Family filter pills -->
+    <div class="family-pills" id="family-pills"></div>
+
+    <!-- Control list -->
+    <div id="controls-list"><div class="loading">Loading...</div></div>
+  </main>
+
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+let allControls = [];
+let activeFamily = "ALL";
+
+async function load() {
+  loadSyncStatus(document.getElementById("sync-status"));
+
+  const controls = await API.get("/api/controls");
+  allControls = controls;
+
+  // Build family pills from distinct groups
+  const families = ["ALL", ...new Set(controls.map(c => c.control_group).filter(Boolean).sort())];
+  renderFamilyPills(families);
+  renderControls();
+}
+
+function renderFamilyPills(families) {
+  const container = document.getElementById("family-pills");
+  container.innerHTML = families.map(f => `
+    <button
+      class="family-pill ${f === activeFamily ? "active" : ""}"
+      onclick="setFamily('${f}')"
+    >${f}</button>
+  `).join("");
+}
+
+function setFamily(f) {
+  activeFamily = f;
+  // Re-render pills to update active state
+  document.querySelectorAll(".family-pill").forEach(btn => {
+    btn.classList.toggle("active", btn.textContent === f);
+  });
+  renderControls();
+}
+
+function renderControls() {
+  const filtered = activeFamily === "ALL"
+    ? allControls
+    : allControls.filter(c => c.control_group === activeFamily);
+
+  document.getElementById("control-count").textContent =
+    `${filtered.length} controls`;
+
+  const list = document.getElementById("controls-list");
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty-state">No controls in this family.</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(c => `
+    <a href="/controls/${c.control_id}" class="control-card">
+      <div class="control-card-left">
+        <span class="control-card-id">${c.control_id}</span>
+        <span class="control-card-name">${c.name}</span>
+      </div>
+      <div class="control-card-right">
+        <span class="control-stat" title="Techniques mitigated">
+          <span class="control-stat-num">${c.technique_count}</span>
+          <span class="control-stat-label">techniques</span>
+        </span>
+        <span class="control-stat" title="Threat actors using those techniques">
+          <span class="control-stat-num ${c.actor_count > 0 ? "stat-accent" : ""}">${c.actor_count}</span>
+          <span class="control-stat-label">actors</span>
+        </span>
+      </div>
+    </a>
+  `).join("");
+}
+
+load();
+</script>
+</body>
+</html>

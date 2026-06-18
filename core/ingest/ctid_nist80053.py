@@ -43,11 +43,14 @@ class CtidNist80053Connector(BaseConnector):
         resp.raise_for_status()
         data = resp.json()
 
+        # The published mapping JSON has no top-level "status" field — only
+        # "mapping_type", which is either "mitigates" (a real mapping) or
+        # "non_mappable" (technique has no applicable control).
         mappings = [
             m for m in data.get("mapping_objects", [])
-            if m.get("status") == "complete" and m.get("capability_id")
+            if m.get("mapping_type") == "mitigates" and m.get("capability_id")
         ]
-        print(f"[{self.name}] Downloaded {len(mappings)} complete mappings")
+        print(f"[{self.name}] Downloaded {len(mappings)} mitigates mappings")
 
         # --- Pass 1: upsert Control rows ---
         control_db_map: dict[str, int] = {}  # capability_id -> db pk

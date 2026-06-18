@@ -22,6 +22,7 @@ load_dotenv()
 from core.db import init_db, get_session
 from core.resolution import ResolutionIndex
 from explorer.api.actors import router as actors_router
+from explorer.api.controls import router as controls_router
 from explorer.api.search import router as search_router
 from explorer.api.sync import router as sync_router
 
@@ -53,6 +54,7 @@ app = FastAPI(
 
 # API routes
 app.include_router(actors_router)
+app.include_router(controls_router)
 app.include_router(search_router)
 app.include_router(sync_router)
 
@@ -68,6 +70,16 @@ def index():
 @app.get("/actor/{actor_id}")
 def actor_page(actor_id: int):
     return FileResponse(str(UI_DIR / "actor.html"))
+
+
+@app.get("/controls")
+def controls_page():
+    return FileResponse(str(UI_DIR / "controls.html"))
+
+
+@app.get("/controls/{control_id}")
+def control_detail_page(control_id: str):
+    return FileResponse(str(UI_DIR / "control_detail.html"))
 
 
 @app.get("/settings")

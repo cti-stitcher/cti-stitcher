@@ -80,8 +80,9 @@ See `core/ingest/README.md` for details.
 
 - [x] v1: Threat Actor Explorer
 - [x] v2: CTI-to-risk mapper, enrichment-only (NIST 800-53 rev5 controls shown on actor/technique pages)
+- [x] v2.5: Controls browse page — reverse lookup: pick a control, see which techniques it mitigates and which actors use them
 - [ ] v1.5: Geographic map overlay
-- [ ] v2.5: Controls browse page (pick a control, see related techniques/actors); CIS Controls bridge (needs a current, machine-readable CIS<->ATT&CK mapping — none exists yet)
+- [ ] v2.5+: CIS Controls bridge (needs a current, machine-readable CIS<->ATT&CK mapping — none exists yet)
 - [ ] v3: Risk mapper gap analysis (org provides control posture, get coverage gaps per actor); TTP-to-detection gap analyzer (ATT&CK Navigator layer input)
 - [ ] v4: Dissemination and feedback loop tracker
 

@@ -287,6 +287,113 @@ select:focus { border-color: var(--accent); }
 /* Software pills */
 .software-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 
+/* Controls browse page — family filter pills */
+.family-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.family-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.family-pill:hover { color: var(--text); background: var(--tag-bg); }
+.family-pill.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.control-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 16px;
+  margin-bottom: 4px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+}
+.control-card:hover {
+  border-color: var(--accent-dim);
+  background: #1d2133;
+  text-decoration: none;
+}
+
+.control-card-left { display: flex; align-items: center; gap: 12px; }
+
+.control-card-id {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 54px;
+}
+
+.control-card-name { font-size: 13px; }
+
+.control-card-right { display: flex; gap: 20px; flex-shrink: 0; }
+
+.control-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.control-stat-num {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+.control-stat-num.stat-accent { color: var(--accent); }
+
+.control-stat-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Actor tags on control detail page */
+.technique-actors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 5px 0 0 100px;
+}
+
+.actor-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--tag-bg);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  transition: color 0.12s, border-color 0.12s;
+}
+.actor-tag:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+  text-decoration: none;
+}
+
 /* Settings */
 .connector-card {
   background: var(--surface);
