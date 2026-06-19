@@ -12,6 +12,8 @@ Open source threat intelligence toolchain for CTI analysts.
 
 **v4: D3FEND Integration** — adds a detection and hardening layer alongside the compliance layer. Browse MITRE D3FEND countermeasures (Harden / Detect / Isolate / Deceive / Evict / Restore), mark what you've deployed, and see dual coverage scores per actor — NIST 800-53 compliance % and D3FEND detection coverage % side by side.
 
+**v5: Threat Model Report** — one-click Excel export per actor. Five sheets: actor profile, full TTP list with verbatim STIX procedure citations (how the actor actually uses each technique), NIST 800-53 control mapping with posture, D3FEND countermeasure mapping with posture, and a gap summary with ranked action list sorted by techniques closed. Pure sourced extraction — no LLM synthesis, every row traceable to MITRE ATT&CK, CTID, or D3FEND ontology data.
+
 ---
 
 ## Install
@@ -94,7 +96,7 @@ See `core/ingest/README.md` for details.
 - [x] v2.5: Controls browse page — reverse lookup: control → techniques → actors, posture toggles
 - [x] v3: Gap analysis — per-actor coverage %, all-actors leaderboard, remediation hints
 - [x] v4: D3FEND integration — detection coverage layer alongside NIST compliance, dual coverage bars
-- [ ] v5: Actor threat model report — pick an actor, generate a structured report with procedure-level TTPs, matched D3FEND countermeasures, and NIST control gaps (requires ATT&CK procedure ingestion + LLM synthesis)
+- [x] v5: Actor threat model report — one-click Excel download per actor; 5 sheets (profile, TTPs + STIX procedure citations, NIST mapping, D3FEND mapping, gap summary + ranked action list)
 - [ ] v1.5: Geographic map overlay
 - [ ] CIS Controls bridge (blocked on machine-readable CIS↔ATT&CK mapping)
 

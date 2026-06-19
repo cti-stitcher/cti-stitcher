@@ -31,8 +31,28 @@ SessionLocal = sessionmaker(bind=engine, autoflush=True, autocommit=False)
 
 
 def init_db() -> None:
-    """Create all tables if they don't exist."""
+    """Create all tables if they don't exist, then apply incremental migrations."""
     Base.metadata.create_all(bind=engine)
+    _migrate(engine)
+
+
+def _migrate(engine) -> None:
+    """
+    Safe incremental migrations for SQLite.
+    SQLite's ALTER TABLE supports ADD COLUMN only — no drop/rename.
+    Each migration is idempotent: check PRAGMA table_info before applying.
+    """
+    with engine.connect() as conn:
+        # v5: add procedure column to actor_techniques
+        cols = {row[1] for row in conn.execute(
+            __import__("sqlalchemy").text("PRAGMA table_info(actor_techniques)")
+        )}
+        if "procedure" not in cols:
+            conn.execute(__import__("sqlalchemy").text(
+                "ALTER TABLE actor_techniques ADD COLUMN procedure TEXT"
+            ))
+            conn.commit()
+            print("[db] Migration applied: actor_techniques.procedure column added")
 
 
 def get_session() -> Session:

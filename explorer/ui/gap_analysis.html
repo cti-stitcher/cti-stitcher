@@ -63,11 +63,21 @@
       <!-- Dual summary bar (shown when both analyses loaded) -->
       <div id="dual-summary" style="display:none"></div>
 
-      <!-- Framework sub-tabs -->
+      <!-- Report download bar -->
+      <div id="report-bar" style="display:none;margin-bottom:12px">
+        <a id="report-link" href="#" class="btn btn-ghost" style="font-size:12px" download>
+          ⬇ Download Threat Model (.xlsx)
+        </a>
+        <span style="font-size:11px;color:var(--text-dim);margin-left:10px">
+          5-sheet Excel report — actor profile, TTPs with STIX citations, NIST controls, D3FEND countermeasures, gap summary
+        </span>
+      </div>
+
+      <!-- Framework sub-tabs — D3FEND is the primary detection layer -->
       <div id="framework-tabs" style="display:none;margin:16px 0 20px">
         <div class="gap-tabs" style="margin-bottom:0">
-          <button class="gap-tab active" id="ftab-nist" onclick="setFrameworkTab('nist')">NIST 800-53</button>
-          <button class="gap-tab" id="ftab-d3fend" onclick="setFrameworkTab('d3fend')">D3FEND</button>
+          <button class="gap-tab active" id="ftab-d3fend" onclick="setFrameworkTab('d3fend')">D3FEND</button>
+          <button class="gap-tab" id="ftab-nist" onclick="setFrameworkTab('nist')">NIST 800-53</button>
         </div>
       </div>
 
@@ -82,8 +92,8 @@
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px">
         <button class="btn btn-primary" onclick="runAllAnalysis()">Analyze All Actors</button>
         <div class="gap-tabs" style="margin-bottom:0">
-          <button class="gap-tab active" id="all-ftab-nist" onclick="setAllFramework('nist')">NIST 800-53</button>
-          <button class="gap-tab" id="all-ftab-d3fend" onclick="setAllFramework('d3fend')">D3FEND</button>
+          <button class="gap-tab active" id="all-ftab-d3fend" onclick="setAllFramework('d3fend')">D3FEND</button>
+          <button class="gap-tab" id="all-ftab-nist" onclick="setAllFramework('nist')">NIST 800-53</button>
         </div>
       </div>
       <div id="gap-all-root"></div>
@@ -96,12 +106,13 @@
 <script>
 let allActors = [];
 let activeTab = "single";
-let activeFramework = "nist";   // "nist" | "d3fend"
-let activeAllFramework = "nist";
+let activeFramework = "d3fend"; // "nist" | "d3fend" — D3FEND is the primary detection layer
+let activeAllFramework = "d3fend";
 
 // Cached results per actor (avoid redundant fetches)
 let cachedNist = null;
 let cachedD3fend = null;
+let cachedRecs = null;
 let cachedAllNist = null;
 let cachedAllD3fend = null;
 
@@ -175,20 +186,24 @@ async function analyzeActor(actorId) {
   // Clear caches when switching actor
   cachedNist = null;
   cachedD3fend = null;
+  cachedRecs = null;
 
   const root = document.getElementById("gap-single-root");
   root.innerHTML = `<div class="loading">Analyzing...</div>`;
   document.getElementById("dual-summary").style.display = "none";
+  document.getElementById("report-bar").style.display = "none";
   document.getElementById("framework-tabs").style.display = "none";
 
-  // Fetch NIST and D3FEND in parallel
-  const [nistResult, d3fResult] = await Promise.allSettled([
+  // Fetch NIST, D3FEND gap, and recommendations in parallel
+  const [nistResult, d3fResult, recsResult] = await Promise.allSettled([
     API.get(`/api/gap/${actorId}`),
     API.get(`/api/gap/d3fend/${actorId}`),
+    API.get(`/api/d3fend/recommendations/${actorId}`),
   ]);
 
   if (nistResult.status === "fulfilled") cachedNist = nistResult.value;
   if (d3fResult.status === "fulfilled") cachedD3fend = d3fResult.value;
+  if (recsResult.status === "fulfilled") cachedRecs = recsResult.value;
 
   if (!cachedNist) {
     root.innerHTML = `<div class="empty-state">Failed: ${nistResult.reason?.message || "unknown error"}</div>`;
@@ -199,10 +214,21 @@ async function analyzeActor(actorId) {
   const hasNistPosture = cachedNist.posture.implemented_control_count > 0;
   const hasD3fendPosture = cachedD3fend && cachedD3fend.posture.implemented_count > 0;
 
+  // Always show the report download link once an actor is loaded (posture or not)
+  document.getElementById("report-link").href = `/api/report/${actorId}`;
+  document.getElementById("report-bar").style.display = "";
+
   if (hasNistPosture || hasD3fendPosture) {
     document.getElementById("dual-summary").style.display = "";
     document.getElementById("framework-tabs").style.display = "";
     renderDualSummary(cachedNist, cachedD3fend);
+
+    // Auto-select: prefer D3FEND if it has posture data, else fall back to NIST
+    const preferredFw = hasD3fendPosture ? "d3fend" : "nist";
+    activeFramework = preferredFw;
+    document.getElementById("ftab-d3fend").classList.toggle("active", preferredFw === "d3fend");
+    document.getElementById("ftab-nist").classList.toggle("active", preferredFw === "nist");
+
     renderFrameworkDetail();
   } else {
     // Neither framework has posture — show combined empty state
@@ -227,8 +253,23 @@ function renderDualSummary(nist, d3f) {
         </span>
       </div>
 
-      <!-- NIST bar -->
+      <!-- D3FEND bar — primary detection layer -->
+      ${d3f ? `
       <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="color:var(--text-dim)">D3FEND detection coverage</span>
+          <span style="font-family:var(--mono);font-weight:700;color:${d3fColor}">${d3fPct}%</span>
+        </div>
+        <div class="coverage-bar-bg">
+          <div class="coverage-bar-fill" style="width:${d3fPct}%;background:${d3fColor}"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:3px">
+          ${d3f.summary.covered}/${d3f.summary.mappable_techniques} mappable · ${d3f.summary.no_mapping} no D3FEND data · ${d3f.posture.implemented_count} deployed
+        </div>
+      </div>` : `<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">D3FEND not yet synced — run a sync to enable detection coverage.</div>`}
+
+      <!-- NIST bar — compliance layer -->
+      <div>
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
           <span style="color:var(--text-dim)">NIST 800-53 compliance</span>
           <span style="font-family:var(--mono);font-weight:700;color:${nistColor}">${nistPct}%</span>
@@ -240,21 +281,6 @@ function renderDualSummary(nist, d3f) {
           ${nist.summary.covered}/${nist.summary.total_techniques} techniques · ${nist.posture.implemented_control_count} controls
         </div>
       </div>
-
-      <!-- D3FEND bar -->
-      ${d3f ? `
-      <div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-          <span style="color:var(--text-dim)">D3FEND detection coverage</span>
-          <span style="font-family:var(--mono);font-weight:700;color:${d3fColor}">${d3fPct}%</span>
-        </div>
-        <div class="coverage-bar-bg">
-          <div class="coverage-bar-fill" style="width:${d3fPct}%;background:${d3fColor}"></div>
-        </div>
-        <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:3px">
-          ${d3f.summary.covered}/${d3f.summary.total_techniques} techniques · ${d3f.posture.implemented_count} countermeasures
-        </div>
-      </div>` : `<div style="font-size:12px;color:var(--text-dim)">D3FEND not yet synced — run a sync to enable detection coverage.</div>`}
     </div>
   `;
 }
@@ -307,19 +333,40 @@ function renderNistDetail(data, root) {
 }
 
 function renderD3fendDetail(data, root) {
-  const { covered, not_covered } = data;
+  const { covered, not_deployed, no_mapping } = data;
+  const recs = cachedRecs?.recommendations || [];
+
   root.innerHTML = `
-    <div class="section" style="margin-top:8px">
+    ${recs.length ? renderRecommendations(recs) : ""}
+
+    <!-- Actionable gap: D3FEND has an answer, you haven't deployed it -->
+    <div class="section" style="margin-top:${recs.length ? 28 : 8}px">
       <div class="section-title" style="color:var(--danger)">
-        Not Detected — ${not_covered.length} techniques
+        Not Deployed — ${not_deployed.length} techniques
       </div>
       <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">
-        No implemented D3FEND countermeasure addresses these. Suggestions shown are deployed by others but not yet marked by you.
+        D3FEND has countermeasures for these techniques, but none are implemented. Deploy one to close the gap.
       </p>
-      ${not_covered.length
-        ? renderTechniqueGroup(not_covered, "d3fend", false)
-        : `<div style="color:var(--success);padding:12px 0;font-size:13px">✓ All techniques have detection coverage.</div>`}
+      ${not_deployed.length
+        ? renderTechniqueGroup(not_deployed, "d3fend", false)
+        : `<div style="color:var(--success);padding:12px 0;font-size:13px">✓ All mappable techniques are covered.</div>`}
     </div>
+
+    <!-- Blind spot: D3FEND has no artifact mapping for these -->
+    <div class="section" style="margin-top:28px">
+      <div class="section-title" style="color:var(--text-dim)">
+        No D3FEND Mapping — ${no_mapping.length} techniques
+      </div>
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">
+        D3FEND has no artifact-level mapping for these techniques. They are excluded from your coverage %.
+        Track detection via other means (SIGMA rules, vendor detections, etc.).
+      </p>
+      ${no_mapping.length
+        ? renderTechniqueGroup(no_mapping, "d3fend-nomapping", false)
+        : `<div style="padding:12px 0;font-size:13px;color:var(--text-dim)">None.</div>`}
+    </div>
+
+    <!-- Covered -->
     <div class="section" style="margin-top:28px">
       <div class="section-title" style="color:var(--success)">
         Detected — ${covered.length} techniques
@@ -345,6 +392,17 @@ async function runAllAnalysis() {
 
   if (nistResult.status === "fulfilled") cachedAllNist = nistResult.value;
   if (d3fResult.status === "fulfilled") cachedAllD3fend = d3fResult.value;
+
+  // Auto-select framework: prefer D3FEND if it has posture, else NIST
+  const d3fHasPosture = cachedAllD3fend?.posture?.implemented_count > 0;
+  const nistHasPosture = cachedAllNist?.posture?.implemented_control_count > 0;
+  if (d3fHasPosture) {
+    activeAllFramework = "d3fend";
+  } else if (nistHasPosture) {
+    activeAllFramework = "nist";
+  }
+  document.getElementById("all-ftab-d3fend").classList.toggle("active", activeAllFramework === "d3fend");
+  document.getElementById("all-ftab-nist").classList.toggle("active", activeAllFramework === "nist");
 
   const activeData = activeAllFramework === "nist" ? cachedAllNist : cachedAllD3fend;
   if (!activeData) {
@@ -392,7 +450,9 @@ function renderAllGap(data, root, framework) {
         </div>
         <div class="all-actors-pct" style="color:${barColor}">${pct}%</div>
         <div class="all-actors-counts" style="color:var(--text-dim)">
-          ${a.covered}/${a.total_techniques}
+          ${framework === "d3fend"
+            ? `${a.covered}/${a.mappable_techniques ?? a.total_techniques}`
+            : `${a.covered}/${a.total_techniques}`}
         </div>
       </div>
     `;
@@ -432,12 +492,12 @@ function noPostureHtml() {
       <div style="font-size:32px;margin-bottom:12px">⚙️</div>
       <div style="font-weight:600;margin-bottom:8px">No posture data yet</div>
       <p style="color:var(--text-dim);font-size:13px;max-width:440px;margin:0 auto 16px">
-        Mark NIST controls on the <a href="/controls">Controls page</a> and
-        D3FEND countermeasures on the <a href="/d3fend">D3FEND page</a>.
+        Mark D3FEND countermeasures on the <a href="/d3fend">D3FEND page</a> and
+        NIST controls on the <a href="/controls">Controls page</a>.
       </p>
       <div style="display:flex;gap:10px;justify-content:center">
-        <a href="/controls" class="btn btn-primary">NIST Controls →</a>
-        <a href="/d3fend" class="btn">D3FEND →</a>
+        <a href="/d3fend" class="btn btn-primary">D3FEND →</a>
+        <a href="/controls" class="btn">NIST Controls →</a>
       </div>
     </div>
   `;
@@ -457,6 +517,8 @@ function renderTechniqueGroup(techniques, framework, isCovered) {
     const rows = byTactic[tactic].map(t => {
       if (framework === "nist") {
         return renderNistTechniqueRow(t, isCovered);
+      } else if (framework === "d3fend-nomapping") {
+        return renderD3fendNoMappingRow(t);
       } else {
         return renderD3fendTechniqueRow(t, isCovered);
       }
@@ -485,89 +547,4 @@ function renderNistTechniqueRow(t, isCovered) {
     ).join("");
     const moreCount = (t.available_controls || []).length - 6;
     return `
-      <div class="technique-item">
-        <div class="technique-row">
-          <span class="technique-id">${t.attack_id}</span>
-          <span>${t.name}</span>
-          ${t.is_subtechnique ? tag("sub", "") : ""}
-          ${!t.total_controls ? `<span class="tag" style="font-size:10px;opacity:0.6">no mapping</span>` : ""}
-        </div>
-        ${availableTags ? `
-          <div class="technique-controls">
-            <span style="font-size:10px;color:var(--text-dim);margin-right:4px">would help:</span>
-            ${availableTags}
-            ${moreCount > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreCount} more</span>` : ""}
-          </div>` : ""}
-      </div>`;
-  }
-}
-
-const D3FEND_TACTIC_COLORS = {
-  Harden:  "var(--warn)",
-  Detect:  "#7c6fcd",
-  Isolate: "var(--accent)",
-  Deceive: "#c084fc",
-  Evict:   "var(--danger)",
-  Restore: "var(--success)",
-};
-
-function d3fendBadge(cm, isHint) {
-  const color = D3FEND_TACTIC_COLORS[cm.tactic] || "var(--text-dim)";
-  const cls = isHint ? "control-badge gap-hint" : "control-badge";
-  const href = `https://d3fend.mitre.org/technique/${cm.d3fend_id}/`;
-  const inner = `<a href="${href}" target="_blank" style="color:inherit" title="${cm.name} (${cm.tactic})">${cm.d3fend_id}</a>`;
-  return `<span class="${cls}" style="${isHint ? `border-color:${color}40;color:${color}` : ''}">${inner}</span>`;
-}
-
-function renderD3fendTechniqueRow(t, isCovered) {
-  if (isCovered) {
-    const badges = (t.implemented_countermeasures || []).map(c => d3fendBadge(c, false)).join("");
-    return `
-      <div class="technique-item">
-        <div class="technique-row">
-          <span class="technique-id">${t.attack_id}</span>
-          <span>${t.name}</span>
-          ${t.is_subtechnique ? tag("sub", "") : ""}
-        </div>
-        ${badges ? `<div class="technique-controls">${badges}</div>` : ""}
-      </div>`;
-  } else {
-    const availBadges = (t.available_countermeasures || []).slice(0, 6).map(c => d3fendBadge(c, true)).join("");
-    const moreCount = (t.available_countermeasures || []).length - 6;
-    return `
-      <div class="technique-item">
-        <div class="technique-row">
-          <span class="technique-id">${t.attack_id}</span>
-          <span>${t.name}</span>
-          ${t.is_subtechnique ? tag("sub", "") : ""}
-          ${!t.total_countermeasures ? `<span class="tag" style="font-size:10px;opacity:0.6">no mapping</span>` : ""}
-        </div>
-        ${availBadges ? `
-          <div class="technique-controls">
-            <span style="font-size:10px;color:var(--text-dim);margin-right:4px">countermeasures:</span>
-            ${availBadges}
-            ${moreCount > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreCount} more</span>` : ""}
-          </div>` : ""}
-      </div>`;
-  }
-}
-
-// ---- Init ----
-async function load() {
-  loadSyncStatus(document.getElementById("sync-status"));
-  allActors = await API.get("/api/actors");
-  populateListbox(allActors);
-
-  // Pre-select from URL query param
-  const params = new URLSearchParams(window.location.search);
-  const preselect = params.get("actor");
-  if (preselect) {
-    document.getElementById("actor-listbox").value = preselect;
-    runSingleAnalysis();
-  }
-}
-
-load();
-</script>
-</body>
-</html>
+      <div

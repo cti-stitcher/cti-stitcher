@@ -231,6 +231,9 @@ class AttackConnector(BaseConnector):
                     tech_attack_id = _get_attack_id(tgt_obj)
                     tech_db_id = technique_db_map.get(tech_attack_id)
                     if tech_db_id:
+                        # The relationship description is the verbatim STIX procedure citation —
+                        # how this specific actor uses this specific technique.
+                        procedure = _truncate(obj.get("description", ""), max_len=4000)
                         exists = (
                             session.query(ActorTechnique)
                             .filter_by(actor_id=actor_db_id, technique_id=tech_db_id, source=SOURCE)
@@ -242,8 +245,12 @@ class AttackConnector(BaseConnector):
                                 technique_id=tech_db_id,
                                 source=SOURCE,
                                 confidence="high",
+                                procedure=procedure or None,
                             ))
                             rel_count += 1
+                        elif procedure and not exists.procedure:
+                            # Backfill procedure on existing rows from prior syncs
+                            exists.procedure = procedure
 
                 elif tgt_type in ("tool", "malware"):
                     sw_attack_id = _get_attack_id(tgt_obj)

@@ -117,7 +117,4 @@ class CtidNist80053Connector(BaseConnector):
         if skipped_unknown_technique:
             print(
                 f"[{self.name}] WARNING: skipped {skipped_unknown_technique} mappings "
-                f"for techniques not found in DB — run the `attack` connector first."
-            )
-        print(f"[{self.name}] Done: {new_controls} new controls, {new_links} new technique-control links")
-        return new_controls + new_links
+                f"for tec

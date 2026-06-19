@@ -1,11 +1,29 @@
 """
-/api/d3fend       — list all D3FEND countermeasures with posture and technique counts.
-/api/d3fend/{id}/toggle — toggle a countermeasure's implemented status.
-/api/gap/d3fend/all      — aggregate D3FEND coverage leaderboard across all actors.
-/api/gap/d3fend/{id}     — per-actor D3FEND gap analysis.
+/api/d3fend                        — list all D3FEND countermeasures with posture and technique counts.
+/api/d3fend/{id}/toggle            — toggle a countermeasure's implemented status.
+/api/d3fend/recommendations/{id}   — ranked action list for a specific actor.
+/api/gap/d3fend/all                — aggregate D3FEND coverage leaderboard across all actors.
+/api/gap/d3fend/{id}               — per-actor D3FEND gap analysis.
 
 NOTE: /api/gap/d3fend/all must be registered BEFORE /api/gap/d3fend/{actor_id}
 to prevent FastAPI from coercing the string "all" to an integer.
+
+NOTE: /api/gap/d3fend/all must be registered BEFORE /api/gap/d3fend/{actor_id}
+to prevent FastAPI from coercing the string "all" to an integer.
+
+Coverage semantics (three-bucket model)
+---------------------------------------
+A technique can fall into one of three buckets — not two:
+
+  covered      — ≥1 implemented D3FEND countermeasure addresses this technique.
+  not_deployed — D3FEND has countermeasures for this technique, but none are
+                 marked as implemented. Action: deploy a countermeasure.
+  no_mapping   — D3FEND has no artifact-level mapping for this technique at all.
+                 Action: this tool cannot help; look elsewhere for detection guidance.
+
+Coverage % is calculated over (covered + not_deployed) only — i.e. the techniques
+D3FEND can actually speak to. Blending no_mapping into the denominator would make
+low coverage look like a deployment gap when it's really a data gap.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -65,7 +83,6 @@ def list_d3fend(db: Session = Depends(_db)):
         for dt in techniques
     ]
 
-    # Sort by tactic order then name
     out.sort(key=lambda x: (
         TACTIC_ORDER.index(x["tactic"]) if x["tactic"] in TACTIC_ORDER else 99,
         x["name"],
@@ -98,81 +115,37 @@ def toggle_d3fend_posture(d3fend_id: str, db: Session = Depends(_db)):
 
 
 # ---------------------------------------------------------------------------
-# All-actors D3FEND leaderboard  GET /api/gap/d3fend/all
-# (MUST be registered before /api/gap/d3fend/{actor_id})
+# Actor-specific ranked action list  GET /api/d3fend/recommendations/{actor_id}
 # ---------------------------------------------------------------------------
 
-@router.get("/api/gap/d3fend/all")
-def get_d3fend_gap_all(db: Session = Depends(_db)):
+@router.get("/api/d3fend/recommendations/{actor_id}")
+def get_d3fend_recommendations(actor_id: int, db: Session = Depends(_db)):
     """
-    D3FEND coverage leaderboard across all actors with technique data.
-    3 queries total regardless of actor count.
-    Returns actors sorted ascending by d3fend_coverage_pct (most exposed first).
-    """
-    implemented_ids: set[int] = {
-        r.d3fend_technique_id
-        for r in db.query(D3FendPosture).filter_by(implemented=True).all()
-    }
+    Ranked list of unimplemented D3FEND countermeasures for an actor.
 
-    # Technique IDs covered by implemented D3FEND countermeasures
-    if implemented_ids:
-        covered_tech_ids: set[int] = {
-            r.technique_id
-            for r in db.query(TechniqueD3Fend)
-            .filter(TechniqueD3Fend.d3fend_technique_id.in_(implemented_ids))
-            .all()
-        }
-    else:
-        covered_tech_ids = set()
+    For each countermeasure that is NOT yet deployed, count how many of the
+    actor's not-deployed (mappable, uncovered) techniques it would address.
+    Sorted descending by technique_closure_count — i.e. the single deployment
+    that eliminates the most gaps comes first.
 
-    # Batch load all actor-technique links
-    all_at = db.query(ActorTechnique).all()
-    tech_by_actor: dict[int, list[int]] = {}
-    for at in all_at:
-        tech_by_actor.setdefault(at.actor_id, []).append(at.technique_id)
+    Only techniques in the not_deployed bucket count toward closure — techniques
+    with no_mapping are excluded because D3FEND cannot help there regardless.
+    Techniques already covered by another implemented countermeasure are also
+    excluded (they're already closed; deploying this wouldn't change coverage %).
 
-    actors = db.query(Actor).order_by(Actor.name).all()
-    result = []
-    for actor in actors:
-        tech_ids = tech_by_actor.get(actor.id, [])
-        if not tech_ids:
-            continue
-        total = len(tech_ids)
-        covered = sum(1 for tid in tech_ids if tid in covered_tech_ids)
-        pct = round(covered / total * 100) if total else 0
-        result.append({
-            "id": actor.id,
-            "name": actor.name,
-            "attack_group_id": actor.attack_group_id,
-            "country_code": actor.country_code,
-            "total_techniques": total,
-            "covered": covered,
-            "not_covered": total - covered,
-            "coverage_pct": pct,
-        })
-
-    result.sort(key=lambda a: a["coverage_pct"])
-
-    return {
-        "posture": {"implemented_count": len(implemented_ids)},
-        "actors": result,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Per-actor D3FEND gap analysis  GET /api/gap/d3fend/{actor_id}
-# ---------------------------------------------------------------------------
-
-@router.get("/api/gap/d3fend/{actor_id}")
-def get_d3fend_gap(actor_id: int, db: Session = Depends(_db)):
-    """
-    Per-actor D3FEND gap analysis.
-
-    Returns:
-    - covered_techniques: actor techniques addressed by ≥1 implemented D3FEND countermeasure
-    - not_covered_techniques: remaining, with available (unimplemented) countermeasures as hints
-
-    Also returns per-tactic D3FEND coverage breakdown.
+    Response shape:
+      {
+        "actor": {...},
+        "recommendations": [
+          {
+            "d3fend_id": "D3-PSA",
+            "name": "Process Spawn Analysis",
+            "tactic": "Detect",
+            "technique_closure_count": 12,
+            "techniques": [{"attack_id": "T1059", "name": "...", ...}, ...]
+          }, ...
+        ]
+      }
     """
     actor = db.query(Actor).filter_by(id=actor_id).first()
     if not actor:
@@ -183,7 +156,6 @@ def get_d3fend_gap(actor_id: int, db: Session = Depends(_db)):
         for r in db.query(D3FendPosture).filter_by(implemented=True).all()
     }
 
-    # Actor's techniques
     actor_techniques = (
         db.query(ActorTechnique, Technique)
         .join(Technique, ActorTechnique.technique_id == Technique.id)
@@ -192,11 +164,12 @@ def get_d3fend_gap(actor_id: int, db: Session = Depends(_db)):
     )
 
     if not actor_techniques:
-        return _d3fend_response(actor, [], [], len(implemented_ids))
+        return {"actor": {"id": actor.id, "name": actor.name}, "recommendations": []}
 
     technique_ids = [tech.id for _, tech in actor_techniques]
+    tech_map: dict[int, Technique] = {tech.id: tech for _, tech in actor_techniques}
 
-    # Batch: all D3FEND countermeasures mapped to these techniques
+    # Batch: all D3FEND links for this actor's techniques
     d3fend_rows = (
         db.query(TechniqueD3Fend, D3FendTechnique)
         .join(D3FendTechnique, TechniqueD3Fend.d3fend_technique_id == D3FendTechnique.id)
@@ -204,76 +177,85 @@ def get_d3fend_gap(actor_id: int, db: Session = Depends(_db)):
         .all()
     )
 
-    # d3fend_by_technique: technique_db_id -> list of (d3fend_db_id, d3fend_id, name, tactic)
-    d3fend_by_technique: dict[int, list[tuple]] = {}
+    # Build two indexes:
+    #   cm_to_techniques: countermeasure db_id -> set of technique db_ids it covers
+    #   tech_to_cms:      technique db_id      -> set of countermeasure db_ids
+    cm_to_techniques: dict[int, set[int]] = {}
+    tech_to_cms: dict[int, set[int]] = {}
+    cm_meta: dict[int, D3FendTechnique] = {}
+
     for td, dt in d3fend_rows:
-        d3fend_by_technique.setdefault(td.technique_id, []).append(
-            (dt.id, dt.d3fend_id, dt.name, dt.tactic or "Unknown")
-        )
+        cm_to_techniques.setdefault(dt.id, set()).add(td.technique_id)
+        tech_to_cms.setdefault(td.technique_id, set()).add(dt.id)
+        cm_meta[dt.id] = dt
 
-    covered = []
-    not_covered = []
+    # Identify not_deployed techniques:
+    #   - has ≥1 D3FEND mapping (in tech_to_cms)
+    #   - none of those mappings are implemented
+    not_deployed_tech_ids: set[int] = set()
+    for tech_id in technique_ids:
+        cms = tech_to_cms.get(tech_id, set())
+        if not cms:
+            continue  # no_mapping — skip
+        if not cms.intersection(implemented_ids):
+            not_deployed_tech_ids.add(tech_id)
 
-    for at, tech in actor_techniques:
-        tactics = [t.strip() for t in (tech.tactic or "unknown").split(",")]
-        mapped = d3fend_by_technique.get(tech.id, [])
-
-        implemented_cm = [
-            {"d3fend_id": cid_str, "name": cname, "tactic": ctactic}
-            for db_id, cid_str, cname, ctactic in sorted(mapped, key=lambda x: x[1])
-            if db_id in implemented_ids
-        ]
-        available_cm = [
-            {"d3fend_id": cid_str, "name": cname, "tactic": ctactic}
-            for db_id, cid_str, cname, ctactic in sorted(mapped, key=lambda x: x[1])
-            if db_id not in implemented_ids
-        ]
-
-        tech_dict = {
-            "attack_id": tech.attack_id,
-            "name": tech.name,
-            "is_subtechnique": tech.is_subtechnique,
-            "tactic": tactics[0] if tactics else "unknown",
-            "tactics": tactics,
-            "total_countermeasures": len(mapped),
+    if not not_deployed_tech_ids:
+        return {
+            "actor": {"id": actor.id, "name": actor.name, "attack_group_id": actor.attack_group_id},
+            "recommendations": [],
         }
 
-        if not mapped:
-            tech_dict["available_countermeasures"] = []
-            tech_dict["note"] = "no_mapping"
-            not_covered.append(tech_dict)
-        elif implemented_cm:
-            tech_dict["implemented_countermeasures"] = implemented_cm
-            covered.append(tech_dict)
-        else:
-            tech_dict["available_countermeasures"] = available_cm
-            not_covered.append(tech_dict)
+    # For each unimplemented countermeasure, count how many not_deployed
+    # techniques it would close
+    recommendations = []
+    for cm_id, dt in cm_meta.items():
+        if cm_id in implemented_ids:
+            continue  # already deployed
 
-    covered.sort(key=lambda t: t["attack_id"])
-    not_covered.sort(key=lambda t: t["attack_id"])
+        closeable = cm_to_techniques[cm_id].intersection(not_deployed_tech_ids)
+        if not closeable:
+            continue  # doesn't help any not_deployed technique for this actor
 
-    return _d3fend_response(actor, covered, not_covered, len(implemented_ids))
+        techs = sorted(
+            [
+                {
+                    "attack_id": tech_map[tid].attack_id,
+                    "name": tech_map[tid].name,
+                    "tactic": (tech_map[tid].tactic or "unknown").split(",")[0].strip(),
+                    "is_subtechnique": tech_map[tid].is_subtechnique,
+                }
+                for tid in closeable
+            ],
+            key=lambda t: t["attack_id"],
+        )
 
+        recommendations.append({
+            "d3fend_id": dt.d3fend_id,
+            "name": dt.name,
+            "tactic": dt.tactic or "Unknown",
+            "technique_closure_count": len(closeable),
+            "techniques": techs,
+        })
 
-def _d3fend_response(
-    actor: Actor, covered: list, not_covered: list, implemented_count: int
-) -> dict:
-    total = len(covered) + len(not_covered)
-    coverage_pct = round(len(covered) / total * 100) if total else 0
+    recommendations.sort(key=lambda r: -r["technique_closure_count"])
+
     return {
         "actor": {
             "id": actor.id,
             "name": actor.name,
             "attack_group_id": actor.attack_group_id,
-            "country_code": actor.country_code,
         },
-        "posture": {"implemented_count": implemented_count},
-        "summary": {
-            "total_techniques": total,
-            "covered": len(covered),
-            "not_covered": len(not_covered),
-            "coverage_pct": coverage_pct,
-        },
-        "covered": covered,
-        "not_covered": not_covered,
+        "recommendations": recommendations,
     }
+
+
+# ---------------------------------------------------------------------------
+# All-actors D3FEND leaderboard  GET /api/gap/d3fend/all
+# (MUST be registered before /api/gap/d3fend/{actor_id})
+# ---------------------------------------------------------------------------
+
+@router.get("/api/gap/d3fend/all")
+def get_d3fend_gap_all(db: Session = Depends(_db)):
+    """
+    D3FEND coverage leaderboard across all

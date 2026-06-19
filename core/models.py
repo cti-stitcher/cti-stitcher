@@ -105,6 +105,10 @@ class ActorTechnique(Base):
     technique_id: Mapped[int] = mapped_column(Integer, ForeignKey("techniques.id"), nullable=False, index=True)
     source: Mapped[str] = mapped_column(String(64), nullable=False)
     confidence: Mapped[str] = mapped_column(String(16), default="high")
+    procedure: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Verbatim STIX relationship description — the actor-specific procedure citation.
+    # e.g. "APT29 used PowerShell to download and execute payloads from C2 servers."
+    # Populated by the attack connector; null for non-ATT&CK sources.
 
     actor: Mapped["Actor"] = relationship("Actor", back_populates="techniques")
     technique: Mapped["Technique"] = relationship("Technique", back_populates="actors")
@@ -215,75 +219,4 @@ class ControlPosture(Base):
     __tablename__ = "control_posture"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    control_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("controls.id"), unique=True, nullable=False, index=True
-    )
-    implemented: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-
-    control: Mapped["Control"] = relationship("Control")
-
-
-# ---------------------------------------------------------------------------
-# D3FEND Countermeasures
-# ---------------------------------------------------------------------------
-
-class D3FendTechnique(Base):
-    """
-    A MITRE D3FEND defensive countermeasure (e.g. D3-PSA: Process Spawn Analysis).
-    Tactic is one of: Harden / Detect / Isolate / Deceive / Evict / Restore.
-    Populated by the d3fend connector from the D3FEND ontology JSON-LD.
-    """
-    __tablename__ = "d3fend_techniques"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    d3fend_id: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)  # e.g. "D3-PSA"
-    name: Mapped[str] = mapped_column(String(256), nullable=False)
-    tactic: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)   # Harden/Detect/Isolate/...
-    definition: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
-
-class TechniqueD3Fend(Base):
-    """
-    Links an ATT&CK technique to a D3FEND countermeasure.
-    Derived via artifact-based inference: both technique and countermeasure
-    act on the same digital artifact class in the D3FEND ontology.
-    """
-    __tablename__ = "technique_d3fend"
-    __table_args__ = (
-        UniqueConstraint("technique_id", "d3fend_technique_id", name="uq_technique_d3fend"),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    technique_id: Mapped[int] = mapped_column(Integer, ForeignKey("techniques.id"), nullable=False, index=True)
-    d3fend_technique_id: Mapped[int] = mapped_column(Integer, ForeignKey("d3fend_techniques.id"), nullable=False, index=True)
-
-
-class D3FendPosture(Base):
-    """
-    Tracks which D3FEND countermeasures the org has deployed.
-    User-managed via the D3FEND UI — no connector writes to this table.
-    """
-    __tablename__ = "d3fend_posture"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    d3fend_technique_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("d3fend_techniques.id"), unique=True, nullable=False, index=True
-    )
-    implemented: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-
-    d3fend_technique: Mapped["D3FendTechnique"] = relationship("D3FendTechnique")
-
-
-# ---------------------------------------------------------------------------
-# Sync log
-# ---------------------------------------------------------------------------
-
-class SyncLog(Base):
-    __tablename__ = "sync_log"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    connector: Mapped[str] = mapped_column(String(64), nullable=False)
-    run_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    status: Mapped[str] = mapped_column(String(16), nullable=False)   # success / partial / failed
-    records_updated: Mapped[int] = mapped_column(Integer, default=0)
-    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    c
