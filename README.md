@@ -2,6 +2,14 @@
 
 Open source threat intelligence toolchain for CTI analysts.
 
+## The problem
+
+CTI analysts have a gap between *threat knowledge* and *defense posture*. MITRE ATT&CK tells you what adversaries do. NIST 800-53 and D3FEND tell you how to stop them. But translating "APT29 uses T1059.001" into "we're missing SC-7 and here are the five D3FEND countermeasures that would close it" requires manually joining three separate data sources every time.
+
+`cti-stitcher` automates that join locally — no cloud dependency, no vendor lock-in. Point it at a threat actor, get a unified view of their TTPs, your control gaps, your detection gaps, and a ranked action list of what to deploy next.
+
+---
+
 **v1: Threat Actor Explorer** — search any actor alias (APT29, Cozy Bear, Midnight Blizzard) and get a unified profile anchored to MITRE ATT&CK. Runs fully local, no cloud required.
 
 **v2: CTI-to-Risk Mapper (enrichment)** — every technique on an actor profile is decorated with the NIST 800-53 rev5 controls that mitigate it (via CTID's published ATT&CK crosswalk), closing the gap between "what they do" and "what stops them."
