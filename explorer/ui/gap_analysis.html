@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gap Analysis — cti-stitcher</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -547,4 +548,161 @@ function renderNistTechniqueRow(t, isCovered) {
     ).join("");
     const moreCount = (t.available_controls || []).length - 6;
     return `
-      <div
+      <div class="technique-item">
+        <div class="technique-row">
+          <span class="technique-id">${t.attack_id}</span>
+          <span>${t.name}</span>
+          ${t.is_subtechnique ? tag("sub", "") : ""}
+          ${!t.total_controls ? `<span class="tag" style="font-size:10px;opacity:0.6">no mapping</span>` : ""}
+        </div>
+        ${availableTags ? `
+          <div class="technique-controls">
+            <span style="font-size:10px;color:var(--text-dim);margin-right:4px">would help:</span>
+            ${availableTags}
+            ${moreCount > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreCount} more</span>` : ""}
+          </div>` : ""}
+      </div>`;
+  }
+}
+
+const D3FEND_TACTIC_COLORS = {
+  Harden:  "var(--warn)",
+  Detect:  "#7c6fcd",
+  Isolate: "var(--accent)",
+  Deceive: "#c084fc",
+  Evict:   "var(--danger)",
+  Restore: "var(--success)",
+};
+
+function d3fendBadge(cm, isHint) {
+  const color = D3FEND_TACTIC_COLORS[cm.tactic] || "var(--text-dim)";
+  const cls = isHint ? "control-badge gap-hint" : "control-badge";
+  const href = `https://d3fend.mitre.org/technique/${cm.d3fend_id}/`;
+  const inner = `<a href="${href}" target="_blank" style="color:inherit" title="${cm.name} (${cm.tactic})">${cm.d3fend_id}</a>`;
+  return `<span class="${cls}" style="${isHint ? `border-color:${color}40;color:${color}` : ''}">${inner}</span>`;
+}
+
+function renderD3fendTechniqueRow(t, isCovered) {
+  if (isCovered) {
+    const badges = (t.implemented_countermeasures || []).map(c => d3fendBadge(c, false)).join("");
+    return `
+      <div class="technique-item">
+        <div class="technique-row">
+          <span class="technique-id">${t.attack_id}</span>
+          <span>${t.name}</span>
+          ${t.is_subtechnique ? tag("sub", "") : ""}
+        </div>
+        ${badges ? `<div class="technique-controls">${badges}</div>` : ""}
+      </div>`;
+  } else {
+    const availBadges = (t.available_countermeasures || []).slice(0, 6).map(c => d3fendBadge(c, true)).join("");
+    const moreCount = (t.available_countermeasures || []).length - 6;
+    return `
+      <div class="technique-item">
+        <div class="technique-row">
+          <span class="technique-id">${t.attack_id}</span>
+          <span>${t.name}</span>
+          ${t.is_subtechnique ? tag("sub", "") : ""}
+          ${!t.total_countermeasures ? `<span class="tag" style="font-size:10px;opacity:0.6">no mapping</span>` : ""}
+        </div>
+        ${availBadges ? `
+          <div class="technique-controls">
+            <span style="font-size:10px;color:var(--text-dim);margin-right:4px">countermeasures:</span>
+            ${availBadges}
+            ${moreCount > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreCount} more</span>` : ""}
+          </div>` : ""}
+      </div>`;
+  }
+}
+
+function renderRecommendations(recs) {
+  // Show top 10 max — list degrades naturally after that
+  const top = recs.slice(0, 10);
+  const TACTIC_COLORS = {
+    Harden:  "var(--warn)",
+    Detect:  "#7c6fcd",
+    Isolate: "var(--accent)",
+    Deceive: "#c084fc",
+    Evict:   "var(--danger)",
+    Restore: "var(--success)",
+    Unknown: "var(--text-dim)",
+  };
+
+  const rows = top.map((r, idx) => {
+    const color = TACTIC_COLORS[r.tactic] || "var(--text-dim)";
+    const techList = r.techniques.slice(0, 5).map(t =>
+      `<span class="technique-id" style="font-size:10px">${t.attack_id}</span>`
+    ).join(" ");
+    const moreCount = r.techniques.length - 5;
+    return `
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="min-width:22px;text-align:right;font-size:12px;color:var(--text-dim);font-family:var(--mono);padding-top:1px">${idx + 1}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span class="tag" style="font-size:10px;background:${color}20;color:${color};border-color:${color}40;flex-shrink:0">${r.tactic}</span>
+            <span style="font-size:11px;font-family:var(--mono);color:var(--text-dim)">${r.d3fend_id}</span>
+            <span style="font-weight:600;font-size:13px">${r.name}</span>
+            <a href="https://d3fend.mitre.org/technique/${r.d3fend_id}/" target="_blank"
+               style="font-size:10px;color:var(--text-dim);text-decoration:underline;margin-left:auto;flex-shrink:0">↗</a>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+            ${techList}
+            ${moreCount > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreCount} more</span>` : ""}
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:18px;font-weight:700;font-family:var(--mono);color:var(--accent)">${r.technique_closure_count}</div>
+          <div style="font-size:10px;color:var(--text-dim)">technique${r.technique_closure_count !== 1 ? "s" : ""}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  const moreRecs = recs.length - top.length;
+
+  return `
+    <div class="section" style="margin-top:8px">
+      <div class="section-title" style="color:var(--accent)">
+        Ranked Action List — deploy these first
+      </div>
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">
+        Unimplemented countermeasures ranked by how many of this actor's uncovered techniques they address.
+        The #1 countermeasure closes the most gaps with a single deployment.
+      </p>
+      ${rows}
+      ${moreRecs > 0 ? `<div style="font-size:12px;color:var(--text-dim);padding-top:10px">+${moreRecs} more countermeasures also apply. See the <em>Not Deployed</em> section below for the full list by technique.</div>` : ""}
+    </div>
+  `;
+}
+
+function renderD3fendNoMappingRow(t) {
+  return `
+    <div class="technique-item" style="opacity:0.65">
+      <div class="technique-row">
+        <span class="technique-id">${t.attack_id}</span>
+        <span>${t.name}</span>
+        ${t.is_subtechnique ? tag("sub", "") : ""}
+        <span class="tag" style="font-size:10px;opacity:0.8">no D3FEND data</span>
+      </div>
+    </div>`;
+}
+
+// ---- Init ----
+async function load() {
+  loadSyncStatus(document.getElementById("sync-status"));
+  allActors = await API.get("/api/actors");
+  populateListbox(allActors);
+
+  // Pre-select from URL query param
+  const params = new URLSearchParams(window.location.search);
+  const preselect = params.get("actor");
+  if (preselect) {
+    document.getElementById("actor-listbox").value = preselect;
+    runSingleAnalysis();
+  }
+}
+
+load();
+</script>
+</body>
+</html>
