@@ -27,6 +27,7 @@ from explorer.api.d3fend import router as d3fend_router
 from explorer.api.gap import router as gap_router
 from explorer.api.report import router as report_router
 from explorer.api.software import router as software_router
+from explorer.api.targeting import router as targeting_router
 from explorer.api.search import router as search_router
 from explorer.api.sync import router as sync_router
 
@@ -63,6 +64,7 @@ app.include_router(d3fend_router)
 app.include_router(gap_router)
 app.include_router(report_router)
 app.include_router(software_router)
+app.include_router(targeting_router)
 app.include_router(search_router)
 app.include_router(sync_router)
 
@@ -105,26 +107,4 @@ def software_page(software_id: int):
     return FileResponse(str(UI_DIR / "software.html"))
 
 
-@app.get("/settings")
-def settings_page():
-    return FileResponse(str(UI_DIR / "settings.html"))
-
-
-def _open_browser():
-    """Wait for the server to start, then open the browser."""
-    import time
-    import webbrowser
-    time.sleep(1.5)
-    webbrowser.open("http://localhost:8000")
-
-
-def cli():
-    """Entry point for `python -m explorer` and the cti-stitcher CLI script."""
-    import threading
-    import uvicorn
-    threading.Thread(target=_open_browser, daemon=True).start()
-    uvicorn.run("explorer.main:app", host="127.0.0.1", port=8000, reload=False)
-
-
-if __name__ == "__main__":
-    cli()
+@app

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Targeting — cti-stitcher</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="shell">
+
+  <nav class="topbar">
+    <span class="topbar-logo">cti-stitcher</span>
+    <div class="topbar-nav">
+      <a href="/" class="active">Explorer</a>
+      <a href="/controls">Controls</a>
+      <a href="/gap-analysis">Gap Analysis</a>
+      <a href="/d3fend">D3FEND</a>
+      <a href="/settings">Connectors</a>
+    </div>
+    <span class="sync-status" id="sync-status"></span>
+  </nav>
+
+  <main class="content">
+    <div id="target-root"><div class="loading">Loading...</div></div>
+  </main>
+
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+// Parse /targeting/{type}/{value} from the URL
+const pathParts = window.location.pathname.split("/").filter(Boolean);
+const targetType = pathParts[1];
+const targetValue = decodeURIComponent(pathParts.slice(2).join("/"));
+
+// Source actor context (passed as query params from actor.html)
+const qp = new URLSearchParams(window.location.search);
+const fromName = qp.get("from") || null;
+const fromId   = qp.get("from_id") ? parseInt(qp.get("from_id"), 10) : null;
+
+const FLAG = {
+  CN: "🇨🇳", RU: "🇷🇺", KP: "🇰🇵", IR: "🇮🇷", US: "🇺🇸",
+  IN: "🇮🇳", BY: "🇧🇾", UA: "🇺🇦", VN: "🇻🇳", PK: "🇵🇰",
+};
+
+const TYPE_LABEL = {
+  region: "Region",
+  country: "Country",
+  industry: "Industry",
+};
+
+const TYPE_COLOR = {
+  region:   "var(--accent)",
+  country:  "var(--info, #38bdf8)",
+  industry: "var(--success)",
+};
+
+async function load() {
+  loadSyncStatus(document.getElementById("sync-status"));
+  const root = document.getElementById("target-root");
+
+  try {
+    const apiUrl = fromId
+      ? `/api/targeting/${targetType}/${encodeURIComponent(targetValue)}?from_id=${fromId}`
+      : `/api/targeting/${targetType}/${encodeURIComponent(targetValue)}`;
+    const data = await API.get(apiUrl);
+    document.title = `${targetValue} — cti-stitcher`;
+
+    const typeLabel = TYPE_LABEL[targetType] || targetType;
+    const typeColor = TYPE_COLOR[targetType] || "var(--accent)";
+    const hasOverlap = data.actors.some(a => a.shared_ttp_count > 0);
+
+    const actorRows = data.actors.map(actor => {
+      const flag = FLAG[actor.country_code] || "";
+      const isSource = fromId !== null && actor.id === fromId;
+      const overlapLabel = isSource
+        ? `this is your starting point`
+        : fromName
+          ? `${actor.shared_ttp_count} of ${actor.ttp_count} TTPs in common with ${fromName} (${actor.shared_ttp_pct}%)`
+          : `${actor.shared_ttp_count} of ${actor.ttp_count} TTPs shared across this group (${actor.shared_ttp_pct}%)`;
+      const overlapBar = (actor.shared_ttp_count > 0 || isSource)
+        ? `<div style="display:flex;align-items:center;gap:6px;margin-top:5px">
+             ${!isSource ? `
+             <div style="flex:1;max-width:160px;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+               <div style="height:100%;width:${actor.shared_ttp_pct}%;background:var(--accent);border-radius:2px"></div>
+             </div>` : ""}
+             <span style="font-size:10px;color:var(--accent)">${overlapLabel}</span>
+           </div>`
+        : "";
+
+      return `
+        <div class="technique-item" ${isSource ? `style="border-color:var(--accent);background:rgba(99,102,241,0.06)"` : ""}>
+          <div class="technique-row" style="justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0">
+              ${actor.attack_group_id
+                ? `<span class="technique-id">${actor.attack_group_id}</span>`
+                : ""}
+              <a href="/actor/${actor.id}" style="font-weight:500;color:var(--text)">${actor.name}</a>
+              ${flag ? `<span title="${actor.country_code}" style="font-size:14px">${flag}</span>` : ""}
+              ${isSource ? `<span style="font-size:10px;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 5px;line-height:1.4">you were here</span>` : ""}
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
+              <span style="font-size:11px;color:var(--text-dim)">${actor.ttp_count} TTPs</span>
+              ${isSource
+                ? `<span style="font-size:11px;color:var(--accent);font-weight:500">starting point</span>`
+                : actor.shared_ttp_count > 0
+                  ? `<span style="font-size:11px;color:var(--accent);font-weight:500">${actor.shared_ttp_pct}% overlap</span>`
+                  : ""}
+            </div>
+          </div>
+          ${overlapBar}
+        </div>
+      `;
+    }).join("") || `<div style="color:var(--text-dim);padding:12px 0;font-size:13px">No actors tracked targeting this ${typeLabel.toLowerCase()}.</div>`;
+
+    root.innerHTML = `
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:16px">
+        <a href="javascript:history.back()" style="color:var(--text-dim);font-size:13px">← Back</a>
+        ${fromName && fromId ? `
+          <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-dim)">
+            <span>Pivoted from</span>
+            <a href="/actor/${fromId}" style="color:var(--accent);font-weight:500;text-decoration:none">${fromName}</a>
+            <span style="color:var(--text-dim)">— their row is highlighted below</span>
+          </div>` : ""}
+      </div>
+
+      <div class="profile-header">
+        <div>
+          <div class="profile-name">
+            <span class="tag" style="font-size:11px;background:${typeColor}20;color:${typeColor};border-color:${typeColor}40;margin-right:8px;text-transform:uppercase;letter-spacing:0.5px">${typeLabel}</span>
+            ${targetValue}
+          </div>
+          <div class="profile-meta" style="margin-top:8px">
+            <span>${data.total_actors} tracked actor${data.total_actors !== 1 ? "s" : ""}</span>
+            ${data.shared_ttp_count > 0
+              ? `<span style="color:var(--accent)">${data.shared_ttp_count} shared technique${data.shared_ttp_count !== 1 ? "s" : ""} across actors</span>`
+              : ""}
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">
+          Actors targeting ${targetValue} (${data.total_actors})
+        </div>
+        ${hasOverlap ? `
+          <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">
+            ${fromName
+              ? `Overlap % shows how much of each actor's tradecraft overlaps with <strong style="color:var(--text)">${fromName}</strong> — sorted highest first. The higher the number, the more closely their TTPs mirror your starting actor.`
+              : `Overlap % shows how many of each actor's TTPs are shared with at least one other actor in this list — sorted highest first. A high number suggests converging tradecraft or coordinated campaigns.`
+            }
+          </p>` : `
+          <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">
+            Click any actor to open their full profile.
+          </p>`}
+        ${actorRows}
+      </div>
+    `;
+  } catch (e) {
+    root.innerHTML = `<div class="empty-state">Failed to load targeting data: ${e.message}</div>`;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

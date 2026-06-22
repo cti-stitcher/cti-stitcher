@@ -683,34 +683,4 @@ function renderRecommendations(recs) {
   `;
 }
 
-function renderD3fendNoMappingRow(t) {
-  return `
-    <div class="technique-item" style="opacity:0.65">
-      <div class="technique-row">
-        <span class="technique-id">${t.attack_id}</span>
-        <span>${t.name}</span>
-        ${t.is_subtechnique ? tag("sub", "") : ""}
-        <span class="tag" style="font-size:10px;opacity:0.8">no D3FEND data</span>
-      </div>
-    </div>`;
-}
-
-// ---- Init ----
-async function load() {
-  loadSyncStatus(document.getElementById("sync-status"));
-  allActors = await API.get("/api/actors");
-  populateListbox(allActors);
-
-  // Pre-select from URL query param
-  const params = new URLSearchParams(window.location.search);
-  const preselect = params.get("actor");
-  if (preselect) {
-    document.getElementById("actor-listbox").value = preselect;
-    runSingleAnalysis();
-  }
-}
-
-load();
-</script>
-</body>
-</html>
+function renderD3fendNoMapp

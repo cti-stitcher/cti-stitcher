@@ -103,10 +103,18 @@ async function load() {
         : `<span class="tag ${sw.type === 'malware' ? 'tag-warn' : ''}">${sw.name}</span>`
     ).join("") || "<span style='color:var(--text-dim)'>None recorded.</span>";
 
-    // Targeting
-    const industries = a.targeting.industries.map(i => `<span class="tag">${i}</span>`).join("") || "—";
-    const countries = [...a.targeting.regions, ...a.targeting.countries]
-      .map(c => `<span class="tag">${c}</span>`).join("") || "—";
+    // Targeting — all tags are clickable pivots; pass source actor so targeting page can show context
+    const fromParam = `?from=${encodeURIComponent(a.name)}&from_id=${a.id}`;
+    const industries = a.targeting.industries.map(i =>
+      `<a href="/targeting/industry/${encodeURIComponent(i)}${fromParam}" class="tag" style="text-decoration:none;cursor:pointer">${i}</a>`
+    ).join("") || "—";
+    const regions = a.targeting.regions.map(r =>
+      `<a href="/targeting/region/${encodeURIComponent(r)}${fromParam}" class="tag" style="text-decoration:none;cursor:pointer">${r}</a>`
+    ).join("");
+    const countries = a.targeting.countries.map(c =>
+      `<a href="/targeting/country/${encodeURIComponent(c)}${fromParam}" class="tag" style="text-decoration:none;cursor:pointer">${c}</a>`
+    ).join("");
+    const regionsCountries = [regions, countries].filter(Boolean).join("") || "—";
 
     root.innerHTML = `
       <div style="margin-bottom:12px">
@@ -142,31 +150,4 @@ async function load() {
       </div>
 
       <div class="section">
-        <div class="section-title">Targeting</div>
-        <div style="margin-bottom:8px">
-          <span style="font-size:12px;color:var(--text-dim);margin-right:8px">INDUSTRIES</span>${industries}
-        </div>
-        <div>
-          <span style="font-size:12px;color:var(--text-dim);margin-right:8px">REGIONS / COUNTRIES</span>${countries}
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Techniques (${a.technique_count})</div>
-        ${tacticBlocks}
-      </div>
-
-      <div class="section">
-        <div class="section-title">Tools & Malware (${a.software.length})</div>
-        <div class="software-grid">${softwarePills}</div>
-      </div>
-    `;
-  } catch (e) {
-    root.innerHTML = `<div class="empty-state">Failed to load actor: ${e.message}</div>`;
-  }
-}
-
-load();
-</script>
-</body>
-</html>
+        <div class="section-title">Targeting

@@ -170,26 +170,4 @@ async function toggleCM(d3fendId, btn) {
     }
 
     const deployedCount = allCM.filter(c => c.status === "deployed").length;
-    const partialCount  = allCM.filter(c => c.status === "partial").length;
-    document.getElementById("stat-deployed").textContent = `${deployedCount} deployed`;
-    document.getElementById("stat-partial").textContent  = partialCount ? `${partialCount} partial` : "";
-  } catch (e) {
-    console.error("Toggle failed:", e);
-  }
-}
-
-async function load() {
-  loadSyncStatus(document.getElementById("sync-status"));
-  try {
-    allCM = await API.get("/api/d3fend");
-    render();
-  } catch (e) {
-    document.getElementById("cm-root").innerHTML =
-      `<div class="empty-state">Failed to load: ${e.message}</div>`;
-  }
-}
-
-load();
-</script>
-</body>
-</html>
+    const partialCount  = allCM.filter(c => c.status === "pa

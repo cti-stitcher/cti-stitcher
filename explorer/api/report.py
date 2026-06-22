@@ -476,27 +476,4 @@ def _sheet_gap_summary(wb, actor, n_covered, n_partial_covered, n_not_deployed, 
     kv(r, "Not Deployed (countermeasure exists)", n_not_deployed, fill=RED_FILL); r += 1
     kv(r, "No D3FEND Mapping", n_no_mapping, fill=GREY_FILL); r += 1
     kv(r, "Total techniques", n_covered + n_partial_covered + n_not_deployed + n_no_mapping); r += 1
-    kv(r, "Denominator (mappable only)", mappable); r += 1
-    kv(r, "Formula", "covered + (0.5 × partial) / mappable"); r += 2
-
-    section_hdr(r, "NIST 800-53 Compliance Coverage"); r += 1
-    kv(r, "Coverage %", f"{nist_pct}%",
-       fill=GREEN_FILL if nist_pct >= 70 else (WARN_FILL if nist_pct >= 40 else RED_FILL)); r += 1
-    kv(r, "Covered (implemented control)", nist_covered, fill=GREEN_FILL); r += 1
-    kv(r, "Not Covered", total_techs - nist_covered, fill=RED_FILL); r += 1
-    kv(r, "Total techniques", total_techs); r += 2
-
-    section_hdr(r, "Ranked Action List (top countermeasures by gap closure)"); r += 1
-    _header_row(ws, ["Rank", "D3FEND ID", "Countermeasure", "Tactic", "Techniques Closed"], row=r, bg="334155")
-    r += 1
-    for i, (count, d3id, name, tactic) in enumerate(recs[:20], 1):
-        ws.cell(row=r, column=1, value=i).font = Font(name="Arial", size=9)
-        ws.cell(row=r, column=2, value=d3id).font = Font(name="Arial", size=9)
-        ws.cell(row=r, column=3, value=name).font = Font(name="Arial", size=9)
-        ws.cell(row=r, column=4, value=tactic).font = Font(name="Arial", size=9)
-        cnt_cell = ws.cell(row=r, column=5, value=count)
-        cnt_cell.font = Font(bold=True, name="Arial", size=9)
-        _fill_cell(cnt_cell, ACC_FILL)
-        r += 1
-
-    _set_col_widths(ws, [34, 14, 40, 14, 18])
+    kv(r, "Denominator (mappabl

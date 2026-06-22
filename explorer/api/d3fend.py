@@ -450,14 +450,4 @@ def _d3fend_response(
         },
         "summary": {
             "total_techniques": mappable + len(no_mapping),
-            "mappable_techniques": mappable,
-            "no_mapping": len(no_mapping),
-            "covered": n_fully_covered,
-            "partial_covered": n_partial_covered,
-            "not_deployed": len(not_deployed),
-            "coverage_pct": coverage_pct,
-        },
-        "covered": covered,
-        "not_deployed": not_deployed,
-        "no_mapping": no_mapping,
-    }
+            "mappabl

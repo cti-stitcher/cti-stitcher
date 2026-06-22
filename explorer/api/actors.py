@@ -175,5 +175,4 @@ def _actor_detail(actor: Actor, db: Session) -> dict:
             "countries": sorted({t.value for t in targeting if t.target_type == "country"}),
         },
         "mitre_url": f"https://attack.mitre.org/groups/{actor.attack_group_id}/" if actor.attack_group_id else None,
-        "malpedia_url": None,  # populated by malpedia connector in future
-    }
+        "malpedia_url": None,  # populated by malpedia connector in 
