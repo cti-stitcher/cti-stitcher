@@ -176,4 +176,4 @@ def _actor_detail(actor: Actor, db: Session) -> dict:
         },
         "mitre_url": f"https://attack.mitre.org/groups/{actor.attack_group_id}/" if actor.attack_group_id else None,
         "malpedia_url": None,  # populated by malpedia connector in future
-    
+    }

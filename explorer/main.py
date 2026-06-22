@@ -90,4 +90,24 @@ def control_detail_page(control_id: str):
 
 @app.get("/gap-analysis")
 def gap_analysis_page():
-    return FileRe
+    return FileResponse(str(UI_DIR / "gap_analysis.html"))
+
+
+@app.get("/d3fend")
+def d3fend_page():
+    return FileResponse(str(UI_DIR / "d3fend.html"))
+
+
+@app.get("/settings")
+def settings_page():
+    return FileResponse(str(UI_DIR / "settings.html"))
+
+
+def cli():
+    """Entry point for `python -m explorer` and the cti-stitcher CLI script."""
+    import uvicorn
+    uvicorn.run("explorer.main:app", host="127.0.0.1", port=8000, reload=False)
+
+
+if __name__ == "__main__":
+    cli()

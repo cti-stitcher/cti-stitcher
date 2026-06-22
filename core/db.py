@@ -42,17 +42,48 @@ def _migrate(engine) -> None:
     SQLite's ALTER TABLE supports ADD COLUMN only — no drop/rename.
     Each migration is idempotent: check PRAGMA table_info before applying.
     """
+    sa = __import__("sqlalchemy")
+
     with engine.connect() as conn:
         # v5: add procedure column to actor_techniques
         cols = {row[1] for row in conn.execute(
-            __import__("sqlalchemy").text("PRAGMA table_info(actor_techniques)")
+            sa.text("PRAGMA table_info(actor_techniques)")
         )}
         if "procedure" not in cols:
-            conn.execute(__import__("sqlalchemy").text(
+            conn.execute(sa.text(
                 "ALTER TABLE actor_techniques ADD COLUMN procedure TEXT"
             ))
             conn.commit()
             print("[db] Migration applied: actor_techniques.procedure column added")
+
+        # v6: migrate d3fend_posture — replace boolean 'implemented' with string 'status'
+        # SQLite can't drop columns, so we recreate the table when 'implemented' is still present.
+        d3_cols = {row[1] for row in conn.execute(
+            sa.text("PRAGMA table_info(d3fend_posture)")
+        )}
+        if "implemented" in d3_cols:
+            # Recreate table without the old boolean column
+            conn.execute(sa.text("""
+                CREATE TABLE d3fend_posture_new (
+                    id INTEGER PRIMARY KEY,
+                    d3fend_technique_id INTEGER NOT NULL UNIQUE
+                        REFERENCES d3fend_techniques(id),
+                    status TEXT NOT NULL DEFAULT 'not_deployed'
+                )
+            """))
+            # Carry forward existing posture — implemented=1 → deployed, else not_deployed
+            existing_status = "'not_deployed'" if "status" not in d3_cols else \
+                "CASE WHEN status IS NOT NULL AND status != 'not_deployed' THEN status " \
+                "WHEN implemented = 1 THEN 'deployed' ELSE 'not_deployed' END"
+            conn.execute(sa.text(f"""
+                INSERT INTO d3fend_posture_new (id, d3fend_technique_id, status)
+                SELECT id, d3fend_technique_id, {existing_status}
+                FROM d3fend_posture
+            """))
+            conn.execute(sa.text("DROP TABLE d3fend_posture"))
+            conn.execute(sa.text("ALTER TABLE d3fend_posture_new RENAME TO d3fend_posture"))
+            conn.commit()
+            print("[db] Migration applied: d3fend_posture recreated without 'implemented' column")
 
 
 def get_session() -> Session:

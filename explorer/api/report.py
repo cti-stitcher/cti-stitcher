@@ -106,10 +106,12 @@ def generate_report(actor_id: int, db: Session = Depends(_db)):
         nist_by_technique.setdefault(tc.technique_id, []).append((tc, ctrl))
 
     # D3FEND
-    implemented_d3fend_ids: set[int] = {
-        r.d3fend_technique_id
-        for r in db.query(D3FendPosture).filter_by(implemented=True).all()
+    d3fend_posture_map: dict[int, str] = {
+        r.d3fend_technique_id: r.status
+        for r in db.query(D3FendPosture).all()
     }
+    deployed_d3fend_ids: set[int] = {k for k, v in d3fend_posture_map.items() if v == "deployed"}
+    partial_d3fend_ids: set[int]  = {k for k, v in d3fend_posture_map.items() if v == "partial"}
     d3fend_rows = (
         db.query(TechniqueD3Fend, D3FendTechnique)
         .join(D3FendTechnique, TechniqueD3Fend.d3fend_technique_id == D3FendTechnique.id)
@@ -129,14 +131,16 @@ def generate_report(actor_id: int, db: Session = Depends(_db)):
 
     # ---- Compute gap summary --------------------------------------------
 
-    n_covered, n_not_deployed, n_no_mapping = 0, 0, 0
+    n_covered, n_partial_covered, n_not_deployed, n_no_mapping = 0, 0, 0, 0
     nist_covered = 0
     for tech_id in technique_ids:
         cms = d3fend_by_technique.get(tech_id, [])
         if not cms:
             n_no_mapping += 1
-        elif any(dt.id in implemented_d3fend_ids for _, dt in cms):
+        elif any(dt.id in deployed_d3fend_ids for _, dt in cms):
             n_covered += 1
+        elif any(dt.id in partial_d3fend_ids for _, dt in cms):
+            n_partial_covered += 1
         else:
             n_not_deployed += 1
 
@@ -144,20 +148,21 @@ def generate_report(actor_id: int, db: Session = Depends(_db)):
         if any(ctrl.id in implemented_control_ids for _, ctrl in ctrls):
             nist_covered += 1
 
-    mappable = n_covered + n_not_deployed
-    d3fend_pct = round(n_covered / mappable * 100) if mappable else 0
+    mappable = n_covered + n_partial_covered + n_not_deployed
+    d3fend_pct = round((n_covered + 0.5 * n_partial_covered) / mappable * 100) if mappable else 0
     nist_pct = round(nist_covered / len(technique_ids) * 100) if technique_ids else 0
 
-    # Ranked recommendations (not_deployed techniques only)
+    # Ranked recommendations (techniques with no deployed or partial countermeasure)
+    active_d3fend_ids = deployed_d3fend_ids | partial_d3fend_ids
     cm_to_open_techs: dict[int, list] = {}
     for tech_id in technique_ids:
         cms = d3fend_by_technique.get(tech_id, [])
         if not cms:
             continue
-        if any(dt.id in implemented_d3fend_ids for _, dt in cms):
-            continue  # already covered
+        if any(dt.id in active_d3fend_ids for _, dt in cms):
+            continue  # already covered or partial
         for _, dt in cms:
-            if dt.id not in implemented_d3fend_ids:
+            if dt.id not in deployed_d3fend_ids:
                 cm_to_open_techs.setdefault(dt.id, []).append(tech_id)
 
     recs: list[tuple] = []
@@ -175,10 +180,10 @@ def generate_report(actor_id: int, db: Session = Depends(_db)):
     wb.remove(wb.active)  # remove default empty sheet
 
     _sheet_profile(wb, actor, aliases, targeting, actor_software, date.today())
-    _sheet_techniques(wb, actor_techniques, proc_map, d3fend_by_technique, implemented_d3fend_ids, nist_by_technique, implemented_control_ids)
+    _sheet_techniques(wb, actor_techniques, proc_map, d3fend_by_technique, deployed_d3fend_ids, partial_d3fend_ids, nist_by_technique, implemented_control_ids)
     _sheet_nist(wb, actor_techniques, nist_by_technique, implemented_control_ids)
-    _sheet_d3fend(wb, actor_techniques, d3fend_by_technique, implemented_d3fend_ids)
-    _sheet_gap_summary(wb, actor, n_covered, n_not_deployed, n_no_mapping, d3fend_pct, nist_covered, len(technique_ids), nist_pct, recs)
+    _sheet_d3fend(wb, actor_techniques, d3fend_by_technique, deployed_d3fend_ids, partial_d3fend_ids)
+    _sheet_gap_summary(wb, actor, n_covered, n_partial_covered, n_not_deployed, n_no_mapping, d3fend_pct, nist_covered, len(technique_ids), nist_pct, recs)
 
     # ---- Stream as file download ----------------------------------------
 
@@ -287,7 +292,7 @@ def _sheet_profile(wb, actor, aliases, targeting, actor_software, today):
 
 # ---- Sheet 2: Techniques ----
 
-def _sheet_techniques(wb, actor_techniques, proc_map, d3fend_by_technique, implemented_d3fend_ids, nist_by_technique, implemented_control_ids):
+def _sheet_techniques(wb, actor_techniques, proc_map, d3fend_by_technique, deployed_d3fend_ids, partial_d3fend_ids, nist_by_technique, implemented_control_ids):
     ws = wb.create_sheet("Techniques")
     cols = [
         "ATT&CK ID", "Name", "Tactic", "Sub-technique",
@@ -311,9 +316,12 @@ def _sheet_techniques(wb, actor_techniques, proc_map, d3fend_by_technique, imple
         if not cms:
             d3fend_status = "No D3FEND Mapping"
             d3fend_fill = GREY_FILL
-        elif any(dt.id in implemented_d3fend_ids for _, dt in cms):
+        elif any(dt.id in deployed_d3fend_ids for _, dt in cms):
             d3fend_status = "Covered"
             d3fend_fill = GREEN_FILL
+        elif any(dt.id in partial_d3fend_ids for _, dt in cms):
+            d3fend_status = "Partial"
+            d3fend_fill = WARN_FILL
         else:
             d3fend_status = "Not Deployed"
             d3fend_fill = RED_FILL
@@ -383,7 +391,7 @@ def _sheet_nist(wb, actor_techniques, nist_by_technique, implemented_control_ids
 
 # ---- Sheet 4: D3FEND ----
 
-def _sheet_d3fend(wb, actor_techniques, d3fend_by_technique, implemented_d3fend_ids):
+def _sheet_d3fend(wb, actor_techniques, d3fend_by_technique, deployed_d3fend_ids, partial_d3fend_ids):
     ws = wb.create_sheet("D3FEND")
     cols = ["ATT&CK ID", "Technique Name", "D3FEND ID", "Countermeasure Name", "D3FEND Tactic", "Deployed", "Coverage Bucket"]
     _header_row(ws, cols)
@@ -400,21 +408,35 @@ def _sheet_d3fend(wb, actor_techniques, d3fend_by_technique, implemented_d3fend_
             ri += 1
             continue
 
-        any_impl = any(dt.id in implemented_d3fend_ids for _, dt in cms)
+        any_deployed = any(dt.id in deployed_d3fend_ids for _, dt in cms)
+        any_partial  = any(dt.id in partial_d3fend_ids  for _, dt in cms)
+        if any_deployed:
+            bucket = "covered"
+        elif any_partial:
+            bucket = "partial"
+        else:
+            bucket = "not_deployed"
         for _, dt in sorted(cms, key=lambda x: x[1].d3fend_id):
-            deployed = dt.id in implemented_d3fend_ids
-            bucket = "covered" if any_impl else "not_deployed"
+            if dt.id in deployed_d3fend_ids:
+                cm_status = "Deployed"
+                cm_fill = GREEN_FILL
+            elif dt.id in partial_d3fend_ids:
+                cm_status = "Partial"
+                cm_fill = WARN_FILL
+            else:
+                cm_status = "Not Deployed"
+                cm_fill = RED_FILL
             values = [
                 tech.attack_id, tech.name,
                 dt.d3fend_id, dt.name, dt.tactic or "Unknown",
-                "Yes" if deployed else "No", bucket,
+                cm_status, bucket,
             ]
             for ci, val in enumerate(values, 1):
                 cell = ws.cell(row=ri, column=ci, value=val)
                 _data_style(cell)
-            _fill_cell(ws.cell(row=ri, column=6), GREEN_FILL if deployed else RED_FILL)
+            _fill_cell(ws.cell(row=ri, column=6), cm_fill)
             _fill_cell(ws.cell(row=ri, column=7),
-                       GREEN_FILL if bucket == "covered" else RED_FILL)
+                       GREEN_FILL if bucket == "covered" else (WARN_FILL if bucket == "partial" else RED_FILL))
             ri += 1
 
     _set_col_widths(ws, [12, 30, 12, 36, 14, 10, 16])
@@ -422,7 +444,7 @@ def _sheet_d3fend(wb, actor_techniques, d3fend_by_technique, implemented_d3fend_
 
 # ---- Sheet 5: Gap Summary ----
 
-def _sheet_gap_summary(wb, actor, n_covered, n_not_deployed, n_no_mapping, d3fend_pct, nist_covered, total_techs, nist_pct, recs):
+def _sheet_gap_summary(wb, actor, n_covered, n_partial_covered, n_not_deployed, n_no_mapping, d3fend_pct, nist_covered, total_techs, nist_pct, recs):
     ws = wb.create_sheet("Gap Summary")
 
     def section_hdr(row, label):
@@ -446,14 +468,16 @@ def _sheet_gap_summary(wb, actor, n_covered, n_not_deployed, n_no_mapping, d3fen
     r += 2
 
     section_hdr(r, "D3FEND Detection Coverage"); r += 1
-    mappable = n_covered + n_not_deployed
+    mappable = n_covered + n_partial_covered + n_not_deployed
     kv(r, "Coverage %", f"{d3fend_pct}%",
        fill=GREEN_FILL if d3fend_pct >= 70 else (WARN_FILL if d3fend_pct >= 40 else RED_FILL)); r += 1
     kv(r, "Covered (deployed countermeasure)", n_covered, fill=GREEN_FILL); r += 1
+    kv(r, "Partial (subset coverage)", n_partial_covered, fill=WARN_FILL); r += 1
     kv(r, "Not Deployed (countermeasure exists)", n_not_deployed, fill=RED_FILL); r += 1
     kv(r, "No D3FEND Mapping", n_no_mapping, fill=GREY_FILL); r += 1
-    kv(r, "Total techniques", n_covered + n_not_deployed + n_no_mapping); r += 1
-    kv(r, "Denominator (mappable only)", mappable); r += 2
+    kv(r, "Total techniques", n_covered + n_partial_covered + n_not_deployed + n_no_mapping); r += 1
+    kv(r, "Denominator (mappable only)", mappable); r += 1
+    kv(r, "Formula", "covered + (0.5 × partial) / mappable"); r += 2
 
     section_hdr(r, "NIST 800-53 Compliance Coverage"); r += 1
     kv(r, "Coverage %", f"{nist_pct}%",

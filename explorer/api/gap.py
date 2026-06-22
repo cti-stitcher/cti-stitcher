@@ -182,4 +182,67 @@ def get_gap(actor_id: int, db: Session = Depends(_db)):
     not_covered = []
 
     for at, tech in actor_techniques:
-        
+        tactics = [t.strip() for t in (tech.tactic or "unknown").split(",")]
+        mapped_controls = controls_by_technique.get(tech.id, [])
+
+        implemented_controls = [
+            {"control_id": cid_str, "name": cname}
+            for db_id, cid_str, cname in sorted(mapped_controls, key=lambda x: x[1])
+            if db_id in implemented_ids
+        ]
+        available_controls = [
+            {"control_id": cid_str, "name": cname}
+            for db_id, cid_str, cname in sorted(mapped_controls, key=lambda x: x[1])
+            if db_id not in implemented_ids
+        ]
+
+        tech_dict = {
+            "attack_id": tech.attack_id,
+            "name": tech.name,
+            "is_subtechnique": tech.is_subtechnique,
+            "tactic": tactics[0] if tactics else "unknown",
+            "tactics": tactics,
+            "total_controls": len(mapped_controls),
+        }
+
+        if not mapped_controls:
+            # No controls mapped at all in CTID crosswalk — treat as grey zone
+            tech_dict["available_controls"] = []
+            tech_dict["note"] = "no_mapping"
+            not_covered.append(tech_dict)
+        elif implemented_controls:
+            tech_dict["implemented_controls"] = implemented_controls
+            covered.append(tech_dict)
+        else:
+            tech_dict["available_controls"] = available_controls
+            not_covered.append(tech_dict)
+
+    # Sort each bucket by attack_id
+    covered.sort(key=lambda t: t["attack_id"])
+    not_covered.sort(key=lambda t: t["attack_id"])
+
+    return _gap_response(actor, covered, not_covered, implemented_count=len(implemented_ids))
+
+
+def _gap_response(actor: Actor, covered: list, not_covered: list, implemented_count: int) -> dict:
+    total = len(covered) + len(not_covered)
+    coverage_pct = round(len(covered) / total * 100) if total else 0
+    return {
+        "actor": {
+            "id": actor.id,
+            "name": actor.name,
+            "attack_group_id": actor.attack_group_id,
+            "country_code": actor.country_code,
+        },
+        "posture": {
+            "implemented_control_count": implemented_count,
+        },
+        "summary": {
+            "total_techniques": total,
+            "covered": len(covered),
+            "not_covered": len(not_covered),
+            "coverage_pct": coverage_pct,
+        },
+        "covered": covered,
+        "not_covered": not_covered,
+    }

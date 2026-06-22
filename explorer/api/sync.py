@@ -96,4 +96,6 @@ def list_connectors():
 
 def _env_vars_for(name: str) -> list[str]:
     return {
-        "malpedia": ["MALPEDIA_API_K
+        "malpedia": ["MALPEDIA_API_KEY"],
+        "mandiant": ["MANDIANT_API_KEY", "MANDIANT_API_SECRET"],
+    }.get(name, [])

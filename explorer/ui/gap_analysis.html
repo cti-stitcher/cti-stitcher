@@ -213,7 +213,7 @@ async function analyzeActor(actorId) {
 
   // Show dual summary only when both have posture data
   const hasNistPosture = cachedNist.posture.implemented_control_count > 0;
-  const hasD3fendPosture = cachedD3fend && cachedD3fend.posture.implemented_count > 0;
+  const hasD3fendPosture = cachedD3fend && (cachedD3fend.posture.deployed_count > 0 || cachedD3fend.posture.partial_count > 0);
 
   // Always show the report download link once an actor is loaded (posture or not)
   document.getElementById("report-link").href = `/api/report/${actorId}`;
@@ -265,7 +265,7 @@ function renderDualSummary(nist, d3f) {
           <div class="coverage-bar-fill" style="width:${d3fPct}%;background:${d3fColor}"></div>
         </div>
         <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:3px">
-          ${d3f.summary.covered}/${d3f.summary.mappable_techniques} mappable · ${d3f.summary.no_mapping} no D3FEND data · ${d3f.posture.implemented_count} deployed
+          ${d3f.summary.covered}/${d3f.summary.mappable_techniques} mappable · ${d3f.summary.no_mapping} no D3FEND data · ${d3f.posture.deployed_count} deployed${d3f.posture.partial_count ? ` · ${d3f.posture.partial_count} partial` : ""}
         </div>
       </div>` : `<div style="font-size:12px;color:var(--text-dim);margin-bottom:10px">D3FEND not yet synced — run a sync to enable detection coverage.</div>`}
 
@@ -298,7 +298,7 @@ function renderFrameworkDetail() {
     }
     renderNistDetail(cachedNist, root);
   } else {
-    if (!cachedD3fend || !cachedD3fend.posture.implemented_count) {
+    if (!cachedD3fend || (!cachedD3fend.posture.deployed_count && !cachedD3fend.posture.partial_count)) {
       root.innerHTML = `<div style="padding:16px 0;font-size:13px;color:var(--text-dim)">
         No D3FEND countermeasures marked as implemented. <a href="/d3fend">Go to D3FEND →</a>
       </div>`;
@@ -336,6 +336,8 @@ function renderNistDetail(data, root) {
 function renderD3fendDetail(data, root) {
   const { covered, not_deployed, no_mapping } = data;
   const recs = cachedRecs?.recommendations || [];
+  const n_partial = (covered || []).filter(t => t.partially_covered).length;
+  const n_full = (covered || []).length - n_partial;
 
   root.innerHTML = `
     ${recs.length ? renderRecommendations(recs) : ""}
@@ -346,7 +348,7 @@ function renderD3fendDetail(data, root) {
         Not Deployed — ${not_deployed.length} techniques
       </div>
       <p style="color:var(--text-dim);font-size:12px;margin-bottom:10px">
-        D3FEND has countermeasures for these techniques, but none are implemented. Deploy one to close the gap.
+        D3FEND has countermeasures for these techniques, but none are deployed. Deploy one to close the gap.
       </p>
       ${not_deployed.length
         ? renderTechniqueGroup(not_deployed, "d3fend", false)
@@ -367,10 +369,11 @@ function renderD3fendDetail(data, root) {
         : `<div style="padding:12px 0;font-size:13px;color:var(--text-dim)">None.</div>`}
     </div>
 
-    <!-- Covered -->
+    <!-- Covered (fully deployed + partial) -->
     <div class="section" style="margin-top:28px">
       <div class="section-title" style="color:var(--success)">
-        Detected — ${covered.length} techniques
+        Detected — ${n_full} techniques
+        ${n_partial ? `<span style="color:#f59e0b;font-size:12px;font-weight:400;margin-left:8px">+ ${n_partial} partial</span>` : ""}
       </div>
       ${covered.length
         ? renderTechniqueGroup(covered, "d3fend", true)
@@ -395,7 +398,7 @@ async function runAllAnalysis() {
   if (d3fResult.status === "fulfilled") cachedAllD3fend = d3fResult.value;
 
   // Auto-select framework: prefer D3FEND if it has posture, else NIST
-  const d3fHasPosture = cachedAllD3fend?.posture?.implemented_count > 0;
+  const d3fHasPosture = (cachedAllD3fend?.posture?.deployed_count > 0) || (cachedAllD3fend?.posture?.partial_count > 0);
   const nistHasPosture = cachedAllNist?.posture?.implemented_control_count > 0;
   if (d3fHasPosture) {
     activeAllFramework = "d3fend";
@@ -415,9 +418,10 @@ async function runAllAnalysis() {
 
 function renderAllGap(data, root, framework) {
   const { posture, actors } = data;
-  const countKey = framework === "nist" ? "implemented_control_count" : "implemented_count";
+  const countKey = framework === "nist" ? "implemented_control_count" : "deployed_count";
+  const hasPosture = framework === "nist" ? posture[countKey] > 0 : (posture.deployed_count > 0 || posture.partial_count > 0);
 
-  if (!posture[countKey]) {
+  if (!hasPosture) {
     const href = framework === "nist" ? "/controls" : "/d3fend";
     const label = framework === "nist" ? "Controls" : "D3FEND";
     root.innerHTML = `<div class="gap-no-posture">
@@ -585,12 +589,16 @@ function d3fendBadge(cm, isHint) {
 function renderD3fendTechniqueRow(t, isCovered) {
   if (isCovered) {
     const badges = (t.implemented_countermeasures || []).map(c => d3fendBadge(c, false)).join("");
+    const partialTag = t.partially_covered
+      ? `<span class="tag" style="font-size:10px;background:rgba(245,158,11,0.12);color:#f59e0b;border-color:rgba(245,158,11,0.4)">partial</span>`
+      : "";
     return `
       <div class="technique-item">
         <div class="technique-row">
           <span class="technique-id">${t.attack_id}</span>
           <span>${t.name}</span>
           ${t.is_subtechnique ? tag("sub", "") : ""}
+          ${partialTag}
         </div>
         ${badges ? `<div class="technique-controls">${badges}</div>` : ""}
       </div>`;

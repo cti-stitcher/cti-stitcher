@@ -325,4 +325,279 @@ select:focus { border-color: var(--accent); }
   margin-bottom: 4px;
   text-decoration: none;
   color: var(--text);
-  transition: border-color 0.15s, background 
+  transition: border-color 0.15s, background 0.15s;
+}
+.control-card:hover {
+  border-color: var(--accent-dim);
+  background: #1d2133;
+  text-decoration: none;
+}
+
+.control-card-left { display: flex; align-items: center; gap: 12px; }
+
+.control-card-id {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 54px;
+}
+
+.control-card-name { font-size: 13px; }
+
+.control-card-right { display: flex; gap: 20px; flex-shrink: 0; }
+
+.control-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.control-stat-num {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+.control-stat-num.stat-accent { color: var(--accent); }
+
+.control-stat-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Actor tags on control detail page */
+.technique-actors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 5px 0 0 100px;
+}
+
+.actor-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--tag-bg);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  transition: color 0.12s, border-color 0.12s;
+}
+.actor-tag:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+  text-decoration: none;
+}
+
+/* Gap analysis tabs */
+.gap-tabs { display: flex; gap: 4px; }
+
+.gap-tab {
+  padding: 7px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-size: 13px;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.gap-tab:hover { color: var(--text); }
+.gap-tab.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+/* All-actors leaderboard */
+.all-actors-list { display: flex; flex-direction: column; gap: 2px; }
+
+.all-actors-row {
+  display: grid;
+  grid-template-columns: 1fr 200px 52px 64px;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.all-actors-row:hover { border-color: var(--accent-dim); background: #1d2133; }
+
+.all-actors-name { display: flex; align-items: center; font-size: 13px; min-width: 0; overflow: hidden; }
+.all-actors-bar-wrap { min-width: 0; }
+.all-actors-pct { font-family: var(--mono); font-size: 13px; font-weight: 600; text-align: right; }
+.all-actors-counts { font-family: var(--mono); font-size: 11px; text-align: right; }
+
+/* Posture toggle button (controls page) */
+.posture-toggle {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--tag-bg);
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+}
+.posture-toggle:hover { color: var(--text); border-color: var(--text-dim); }
+.posture-toggle.posture-on {
+  background: rgba(62, 207, 142, 0.12);
+  color: var(--success);
+  border-color: rgba(62, 207, 142, 0.4);
+}
+.posture-toggle.posture-partial {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.control-card-impl {
+  border-color: rgba(62, 207, 142, 0.25);
+}
+.control-card-partial {
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+/* Gap analysis page */
+.gap-summary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+.coverage-bar-bg {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.coverage-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.gap-no-posture {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-dim);
+}
+
+/* Gap hint control badges (clickable, links to control detail) */
+.control-badge.gap-hint {
+  text-decoration: none;
+  background: rgba(245, 166, 35, 0.08);
+  color: var(--warn);
+  border-color: rgba(245, 166, 35, 0.25);
+  transition: background 0.12s, border-color 0.12s;
+}
+.control-badge.gap-hint:hover {
+  background: rgba(245, 166, 35, 0.18);
+  border-color: rgba(245, 166, 35, 0.5);
+  text-decoration: none;
+}
+
+/* Settings */
+.connector-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.connector-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-green { background: var(--success); }
+.dot-grey { background: var(--border); }
+
+.connector-info { flex: 1; }
+.connector-name { font-weight: 600; }
+.connector-sub { font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+
+/* Misc */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-dim);
+}
+
+.loading { color: var(--text-dim); font-style: italic; }
+
+.flag { font-size: 18px; }
+
+.match-fuzzy { font-size: 11px; color: var(--warn); }
+
+hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+.result-count { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; }
+
+/* D3FEND countermeasure cards */
+.controls-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* D3FEND card is block-layout (not the flex row used by NIST controls) */
+.d3fend-card {
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.d3fend-card:hover {
+  border-color: var(--accent-dim);
+  background: #1d2133;
+}
+.d3fend-card.control-card-impl {
+  border-color: rgba(62, 207, 142, 0.25);
+}
+.d3fend-card.control-card-partial {
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+/* Dual coverage summary bars */
+.dual-bar-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+/* Framework sub-tab spacing */
+#framework-tabs .gap-tabs {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+#framework-tabs .gap-tab {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: none;
+  margin-bottom: -1px;
+}
+#framework-tabs .gap-tab.active {
+  border-bottom: 1px solid var(--surface);
+}
