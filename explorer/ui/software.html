@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Software — cti-stitcher</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="shell">
+
+  <nav class="topbar">
+    <span class="topbar-logo">cti-stitcher</span>
+    <div class="topbar-nav">
+      <a href="/" class="active">Explorer</a>
+      <a href="/controls">Controls</a>
+      <a href="/gap-analysis">Gap Analysis</a>
+      <a href="/d3fend">D3FEND</a>
+      <a href="/settings">Connectors</a>
+    </div>
+    <span class="sync-status" id="sync-status"></span>
+  </nav>
+
+  <main class="content">
+    <div id="sw-root"><div class="loading">Loading...</div></div>
+  </main>
+
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+const softwareId = parseInt(window.location.pathname.split("/").pop(), 10);
+
+const FLAG = {
+  CN: "🇨🇳", RU: "🇷🇺", KP: "🇰🇵", IR: "🇮🇷", US: "🇺🇸",
+  IN: "🇮🇳", BY: "🇧🇾", UA: "🇺🇦", VN: "🇻🇳", PK: "🇵🇰",
+};
+
+function countryFlag(code) {
+  return FLAG[code] || "";
+}
+
+async function load() {
+  loadSyncStatus(document.getElementById("sync-status"));
+  const root = document.getElementById("sw-root");
+
+  try {
+    const data = await API.get(`/api/software/${softwareId}`);
+    const sw = data.software;
+    document.title = `${sw.name} — cti-stitcher`;
+
+    const typeColor = sw.software_type === "malware" ? "var(--danger)" : "var(--accent)";
+    const attackLink = sw.attack_id
+      ? `<a class="btn btn-ghost" href="https://attack.mitre.org/software/${sw.attack_id}/" target="_blank">ATT&CK ↗</a>`
+      : "";
+
+    const hasOverlap = data.actors.some(a => a.shared_tool_count > 0);
+
+    const actorRows = data.actors.map(actor => {
+      const flag = countryFlag(actor.country_code);
+      const sharedBadges = actor.shared_tools.map(name =>
+        `<span class="tag" style="font-size:10px">${name}</span>`
+      ).join("");
+      const moreShared = actor.shared_tool_count - actor.shared_tools.length;
+
+      return `
+        <div class="technique-item">
+          <div class="technique-row" style="justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0">
+              ${actor.attack_group_id
+                ? `<span class="technique-id">${actor.attack_group_id}</span>`
+                : ""}
+              <a href="/actor/${actor.id}" style="font-weight:500;color:var(--text)">${actor.name}</a>
+              ${flag ? `<span title="${actor.country_code}" style="font-size:14px">${flag}</span>` : ""}
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;flex-shrink:0">
+              <span style="font-size:11px;color:var(--text-dim)">${actor.total_software} tools/malware</span>
+              ${actor.shared_tool_count > 0
+                ? `<span style="font-size:11px;color:var(--accent);font-weight:500">${actor.shared_tool_count} shared</span>`
+                : ""}
+            </div>
+          </div>
+          ${sharedBadges ? `
+            <div class="technique-controls" style="margin-top:4px">
+              <span style="font-size:10px;color:var(--text-dim);margin-right:4px">also shared:</span>
+              ${sharedBadges}
+              ${moreShared > 0 ? `<span style="font-size:10px;color:var(--text-dim)">+${moreShared} more</span>` : ""}
+            </div>` : ""}
+        </div>
+      `;
+    }).join("") || `<div style="color:var(--text-dim);padding:12px 0;font-size:13px">No actors tracked using this software.</div>`;
+
+    root.innerHTML = `
+      <div style="margin-bottom:12px">
+        <a href="javascript:history.back()" style="color:var(--text-dim);font-size:13px">← Back</a>
+      </div>
+
+      <div class="profile-header">
+        <div>
+          <div class="profile-name">
+            <span class="tag" style="font-size:11px;background:${typeColor}20;color:${typeColor};border-color:${typeColor}40;margin-right:8px;text-transform:uppercase;letter-spacing:0.5px">${sw.software_type}</span>
+            ${sw.name}
+          </div>
+          <div class="profile-meta" style="margin-top:8px">
+            ${sw.attack_id ? `<span style="font-family:var(--mono);font-size:12px">${sw.attack_id}</span>` : ""}
+            <span>${data.total_actors} actor${data.total_actors !== 1 ? "s" : ""}</span>
+            ${hasOverlap ? `<span style="color:var(--accent)">shared infrastructure detected</span>` : ""}
+          </div>
+          ${sw.description ? `
+            <p style="color:var(--text-dim);font-size:13px;margin-top:10px;max-width:680px;line-height:1.5">
+              ${sw.description.slice(0, 300)}${sw.description.length > 300 ? "…" : ""}
+            </p>` : ""}
+        </div>
+        <div class="profile-links">${attackLink}</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">
+          Actors using this ${sw.software_type} (${data.total_actors})
+        </div>
+        ${hasOverlap ? `
+          <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">
+            "Shared" counts how many other tools/malware this actor has in common with others in this list —
+            a high count suggests infrastructure overlap or common tradecraft.
+            Sorted by shared tool count.
+          </p>` : `
+          <p style="color:var(--text-dim);font-size:12px;margin-bottom:12px">
+            Click an actor to open their full profile.
+          </p>`}
+        ${actorRows}
+      </div>
+    `;
+  } catch (e) {
+    root.innerHTML = `<div class="empty-state">Failed to load software: ${e.message}</div>`;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

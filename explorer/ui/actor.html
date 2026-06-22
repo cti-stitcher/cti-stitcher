@@ -98,7 +98,9 @@ async function load() {
 
     // Software
     const softwarePills = a.software.map(sw =>
-      `<span class="tag ${sw.type === 'malware' ? 'tag-warn' : ''}">${sw.name}</span>`
+      sw.id
+        ? `<a href="/software/${sw.id}" class="tag ${sw.type === 'malware' ? 'tag-warn' : ''}" style="text-decoration:none;cursor:pointer">${sw.name}</a>`
+        : `<span class="tag ${sw.type === 'malware' ? 'tag-warn' : ''}">${sw.name}</span>`
     ).join("") || "<span style='color:var(--text-dim)'>None recorded.</span>";
 
     // Targeting

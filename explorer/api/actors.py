@@ -166,7 +166,7 @@ def _actor_detail(actor: Actor, db: Session) -> dict:
         "techniques_by_tactic": by_tactic,
         "technique_count": sum(len(v) for v in by_tactic.values()),
         "software": [
-            {"name": sw.name, "type": sw.software_type, "attack_id": sw.attack_id}
+            {"id": sw.id, "name": sw.name, "type": sw.software_type, "attack_id": sw.attack_id}
             for _, sw in actor_software
         ],
         "targeting": {

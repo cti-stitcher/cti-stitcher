@@ -26,6 +26,7 @@ from explorer.api.controls import router as controls_router
 from explorer.api.d3fend import router as d3fend_router
 from explorer.api.gap import router as gap_router
 from explorer.api.report import router as report_router
+from explorer.api.software import router as software_router
 from explorer.api.search import router as search_router
 from explorer.api.sync import router as sync_router
 
@@ -61,6 +62,7 @@ app.include_router(controls_router)
 app.include_router(d3fend_router)
 app.include_router(gap_router)
 app.include_router(report_router)
+app.include_router(software_router)
 app.include_router(search_router)
 app.include_router(sync_router)
 
@@ -96,6 +98,11 @@ def gap_analysis_page():
 @app.get("/d3fend")
 def d3fend_page():
     return FileResponse(str(UI_DIR / "d3fend.html"))
+
+
+@app.get("/software/{software_id}")
+def software_page(software_id: int):
+    return FileResponse(str(UI_DIR / "software.html"))
 
 
 @app.get("/settings")
