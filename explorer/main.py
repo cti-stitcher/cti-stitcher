@@ -103,9 +103,19 @@ def settings_page():
     return FileResponse(str(UI_DIR / "settings.html"))
 
 
+def _open_browser():
+    """Wait for the server to start, then open the browser."""
+    import time
+    import webbrowser
+    time.sleep(1.5)
+    webbrowser.open("http://localhost:8000")
+
+
 def cli():
     """Entry point for `python -m explorer` and the cti-stitcher CLI script."""
+    import threading
     import uvicorn
+    threading.Thread(target=_open_browser, daemon=True).start()
     uvicorn.run("explorer.main:app", host="127.0.0.1", port=8000, reload=False)
 
 
