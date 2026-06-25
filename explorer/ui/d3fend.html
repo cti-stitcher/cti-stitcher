@@ -195,7 +195,7 @@ async function toggleCM(event, d3fendId) {
 
 async function load() {
   try {
-    allCM = await API.get("/api/d3fend/countermeasures");
+    allCM = await API.get("/api/d3fend");
     render();
   } catch(e) {
     document.getElementById("cm-root").innerHTML =
