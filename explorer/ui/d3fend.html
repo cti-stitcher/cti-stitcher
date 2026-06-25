@@ -14,9 +14,10 @@
     <span class="topbar-logo">cti-stitcher</span>
     <div class="topbar-nav">
       <a href="/">Explorer</a>
+      <a href="/d3fend" class="active">D3FEND</a>
       <a href="/controls">Controls</a>
       <a href="/gap-analysis">Gap Analysis</a>
-      <a href="/d3fend" class="active">D3FEND</a>
+      <a href="/rank">Risk Rank</a>
       <a href="/settings">Connectors</a>
     </div>
     <span class="sync-status" id="sync-status"></span>
@@ -91,83 +92,16 @@ function render() {
     : allCM.filter(c => c.tactic === activeTactic);
 
   const deployedCount = allCM.filter(c => c.status === "deployed").length;
-  const partialCount  = allCM.filter(c => c.status === "partial").length;
-  document.getElementById("stat-total").textContent =
-    `${visible.length} countermeasure${visible.length !== 1 ? "s" : ""}`;
-  document.getElementById("stat-deployed").textContent = `${deployedCount} deployed`;
-  document.getElementById("stat-partial").textContent  = partialCount ? `${partialCount} partial` : "";
-
-  if (!visible.length) {
-    root.innerHTML = `<div class="empty-state">No D3FEND data yet. Run a sync to ingest countermeasures.</div>`;
-    return;
+  rtial").length;
+    document.getElementById("deployed-count").textContent = deployedCount;
+    document.getElementById("partial-count").textContent  = partialCount;
+  } catch(e) {
+    console.error("Toggle failed", e);
   }
-
-  root.innerHTML = `<div class="controls-grid">${visible.map(cmCard).join("")}</div>`;
 }
 
-function statusLabel(status) {
-  if (status === "deployed") return "✓ Deployed";
-  if (status === "partial")  return "◑ Partial";
-  return "Mark Deployed";
-}
-function statusClass(status) {
-  if (status === "deployed") return "posture-toggle posture-on";
-  if (status === "partial")  return "posture-toggle posture-partial";
-  return "posture-toggle";
-}
-function cardImplClass(status) {
-  if (status === "deployed") return "control-card-impl";
-  if (status === "partial")  return "control-card-partial";
-  return "";
-}
-
-function cmCard(cm) {
-  const color = tacticColor(cm.tactic);
-  const st = cm.status || (cm.implemented ? "deployed" : "not_deployed");
-  const def = cm.definition ? cm.definition.slice(0, 120) + (cm.definition.length > 120 ? "…" : "") : "";
-  return `
-    <div class="d3fend-card ${cardImplClass(st)}" id="cm-${cm.d3fend_id.replace(/[^a-z0-9]/gi,'_')}">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <div>
-          <span class="tag" style="font-size:10px;background:${color}20;color:${color};border-color:${color}40;margin-bottom:6px;display:inline-block">
-            ${cm.tactic}
-          </span>
-          <div style="font-size:11px;font-family:var(--mono);color:var(--text-dim);margin-bottom:2px">${cm.d3fend_id}</div>
-          <div style="font-weight:600;font-size:14px">${cm.name}</div>
-        </div>
-        <button
-          class="${statusClass(st)}"
-          onclick="toggleCM('${cm.d3fend_id}', this)"
-          style="flex-shrink:0"
-        >${statusLabel(st)}</button>
-      </div>
-      ${def ? `<div style="font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5">${def}</div>` : ""}
-      <div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-family:var(--mono)">
-        ${cm.technique_count} ATT&amp;CK technique${cm.technique_count !== 1 ? "s" : ""}
-        <a href="https://d3fend.mitre.org/technique/${cm.d3fend_id}/"
-           target="_blank"
-           style="margin-left:10px;color:var(--text-dim);text-decoration:underline"
-        >d3fend.mitre.org ↗</a>
-      </div>
-    </div>
-  `;
-}
-
-async function toggleCM(d3fendId, btn) {
-  try {
-    const data = await API.post(`/api/d3fend/${d3fendId}/toggle`);
-    const cm = allCM.find(c => c.d3fend_id === d3fendId);
-    if (cm) cm.status = data.status;
-
-    const safeid = d3fendId.replace(/[^a-z0-9]/gi,'_');
-    const card = document.getElementById(`cm-${safeid}`);
-    if (card) {
-      card.classList.remove("control-card-impl", "control-card-partial");
-      const ic = cardImplClass(data.status);
-      if (ic) card.classList.add(ic);
-      btn.textContent = statusLabel(data.status);
-      btn.className   = statusClass(data.status);
-    }
-
-    const deployedCount = allCM.filter(c => c.status === "deployed").length;
-    const partialCount  = allCM.filter(c => c.status === "pa
+loadSyncStatus(document.getElementById("sync-status"));
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Risk Ranking — cti-stitcher</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    .rank-filters {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .rank-filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .rank-filter-group label {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .rank-filter-group select {
+      font-size: 13px;
+      padding: 6px 10px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      min-width: 180px;
+    }
+    .rank-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      transition: border-color 0.15s;
+    }
+    .rank-card:hover { border-color: var(--accent); }
+    .rank-card.rank-high  { border-left: 3px solid var(--danger, #ef4444); }
+    .rank-card.rank-med   { border-left: 3px solid #f59e0b; }
+    .rank-card.rank-low   { border-left: 3px solid var(--success); }
+    .rank-position {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-dim);
+      min-width: 32px;
+      text-align: right;
+      line-height: 1;
+      padding-top: 2px;
+    }
+    .rank-score-circle {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .rank-score-high { background: rgba(239,68,68,0.12); color: var(--danger, #ef4444); }
+    .rank-score-med  { background: rgba(245,158,11,0.12); color: #f59e0b; }
+    .rank-score-low  { background: rgba(34,197,94,0.12);  color: var(--success); }
+    .rank-main { flex: 1; min-width: 0; }
+    .rank-name {
+      font-size: 15px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .rank-meta {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-top: 3px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .rank-breakdown {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .breakdown-pill {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      background: var(--bg);
+      white-space: nowrap;
+    }
+    .breakdown-pill.pill-hot {
+      background: rgba(239,68,68,0.08);
+      color: var(--danger, #ef4444);
+      border-color: rgba(239,68,68,0.25);
+    }
+    .breakdown-pill.pill-warm {
+      background: rgba(245,158,11,0.08);
+      color: #f59e0b;
+      border-color: rgba(245,158,11,0.25);
+    }
+    .breakdown-pill.pill-cool {
+      background: rgba(34,197,94,0.08);
+      color: var(--success);
+      border-color: rgba(34,197,94,0.25);
+    }
+    .ransomware-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: rgba(239,68,68,0.1);
+      color: var(--danger, #ef4444);
+      border: 1px solid rgba(239,68,68,0.3);
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .no-posture-warn {
+      background: rgba(245,158,11,0.08);
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #f59e0b;
+      margin-bottom: 16px;
+    }
+    .score-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .score-bar-track {
+      flex: 1;
+      max-width: 200px;
+      height: 5px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+  </style>
+</head>
+<body>
+<div class="shell">
+
+  <nav class="topbar">
+    <span class="topbar-logo">cti-stitcher</span>
+    <div class="topbar-nav">
+      <a href="/">Explorer</a>
+      <a href="/d3fend">D3FEND</a>
+      <a href="/controls">Controls</a>
+      <a href="/gap-analysis">Gap Analysis</a>
+      <a href="/rank" class="active">Risk Rank</a>
+      <a href="/settings">Connectors</a>
+    </div>
+    <span class="sync-status" id="sync-status"></span>
+  </nav>
+
+  <main class="content">
+
+    <div style="margin-bottom:16px">
+      <h1 style="font-size:20px;font-weight:700;margin-bottom:4px">Threat Actor Risk Ranking</h1>
+      <p style="color:var(--text-dim);font-size:13px">
+        Actors ranked by risk to your org — weighted by your targeting context and posture gaps.
+        Set your industry and region, then configure your posture on the
+        <a href="/controls" style="color:var(--accent)">Controls</a> and
+        <a href="/d3fend" style="color:var(--accent)">D3FEND</a> pages for a personalized score.
+      </p>
+    </div>
+
+    <div class="rank-filters">
+      <div class="rank-filter-group">
+        <label>Industry</label>
+        <select id="filter-industry">
+          <option value="">All Industries</option>
+          <option>Financial Services</option>
+          <option>Government</option>
+          <option>Defense</option>
+          <option>Healthcare</option>
+          <option>Energy</option>
+          <option>Technology</option>
+          <option>Telecommunications</option>
+          <option>Media</option>
+          <option>Education</option>
+          <option>Aerospace</option>
+          <option>Transportation</option>
+          <option>Manufacturing</option>
+          <option>Pharmaceutical</option>
+          <option>Critical Infrastructure</option>
+        </select>
+      </div>
+      <div class="rank-filter-group">
+        <label>Country</label>
+        <select id="filter-region">
+          <option value="">All Countries</option>
+          <option>United States</option>
+          <option>United Kingdom</option>
+          <option>Germany</option>
+          <option>France</option>
+          <option>Japan</option>
+          <option>South Korea</option>
+          <option>Australia</option>
+          <option>Canada</option>
+          <option>Israel</option>
+          <option>India</option>
+          <option>Taiwan</option>
+          <option>Ukraine</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="run-btn" style="padding:6px 18px;font-size:13px">
+        Rank
+      </button>
+      <button class="btn btn-ghost" id="clear-btn" style="padding:6px 14px;font-size:13px">
+        Clear
+      </button>
+    </div>
+
+    <div id="rank-root"></div>
+
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+<script>
+const FLAG = {
+  CN:"🇨🇳", RU:"🇷🇺", KP:"🇰🇵", IR:"🇮🇷", US:"🇺🇸",
+  IN:"🇮🇳", BY:"🇧🇾", UA:"🇺🇦", VN:"🇻🇳", PK:"🇵🇰",
+  GB:"🇬🇧", DE:"🇩🇪", FR:"🇫🇷", IL:"🇮🇱", RO:"🇷🇴",
+};
+
+function scoreClass(score) {
+  if (score >= 70) return "high";
+  if (score >= 40) return "med";
+  return "low";
+}
+
+function pillClass(pts, max) {
+  const pct = pts / max;
+  if (pct >= 0.75) return "pill-hot";
+  if (pct >= 0.4)  return "pill-warm";
+  return "pill-cool";
+}
+
+function barColor(score) {
+  if (score >= 70) return "var(--danger, #ef4444)";
+  if (score >= 40) return "#f59e0b";
+  return "var(--success)";
+}
+
+async function runRank() {
+  const root = document.getElementById("rank-root");
+  const industry = document.getElementById("filter-industry").value;
+  const region   = document.getElementById("filter-region").value;
+
+  root.innerHTML = '<div class="loading">Ranking actors...</div>';
+
+  try {
+    let url = "/api/rank?limit=50";
+    if (industry) url += `&industry=${encodeURIComponent(industry)}`;
+    if (region)   url += `&region=${encodeURIComponent(region)}`;
+
+    const data = await API.get(url);
+
+    if (!data.actors.length) {
+      root.innerHTML = `<div class="empty-state">No ATT&CK actors found matching these filters.<br>
+        <span style="font-size:12px;color:var(--text-dim)">Try broadening your region or industry selection.</span></div>`;
+      return;
+    }
+
+    const warnHtml = !data.posture_configured
+      ? `<div class="no-posture-warn">
+           ⚠ No posture configured — exposure scores are neutral (17/35 and 12/25).
+           <a href="/controls" style="color:#f59e0b;margin-left:6px">Set up controls →</a>
+           <a href="/d3fend"   style="color:#f59e0b;margin-left:8px">Set up D3FEND →</a>
+         </div>`
+      : "";
+
+    const cards = data.actors.map((a, i) => {
+      const cls  = scoreClass(a.score);
+      const flag = FLAG[a.country_code] || "";
+      const lastSeen = a.last_seen ? a.last_seen.slice(0,10) : "unknown";
+
+      const b = a.score_breakdown;
+      const pills = [
+        `<span class="breakdown-pill ${pillClass(b.targeting, 20)}" title="Targeting match — does this actor target your industry/region? (max 20 pts)">🎯 Targeting +${b.targeting}</span>`,
+        `<span class="breakdown-pill ${pillClass(b.exposure, 35)}"  title="Posture exposure — % of this actor's techniques not covered by your controls or D3FEND (max 35 pts)">🔓 Exposure +${b.exposure}</span>`,
+        `<span class="breakdown-pill ${pillClass(b.critical, 25)}"  title="Critical tactic gaps — uncovered Initial Access, Execution, PrivEsc, DefEvasion techniques (max 25 pts)">⚡ Critical +${b.critical}</span>`,
+        `<span class="breakdown-pill ${pillClass(b.recency, 20)}"   title="Recency — based on last seen date (max 20 pts)">🕐 Recency +${b.recency}</span>`,
+      ].join("");
+
+      const ransomBadge = a.ransomware_flag
+        ? `<span class="ransomware-badge" title="Actor description or associated malware suggests ransomware ecosystem involvement — may be an initial access broker or operator">⚠ ransomware ecosystem</span>`
+        : "";
+
+      const ttpMeta = a.ttp_count > 0
+        ? `${a.ttp_count} TTPs · ${a.critical_ttp_count} critical-tactic`
+        : `no TTPs in ATT&CK`;
+
+      return `
+        <div class="rank-card rank-${cls}">
+          <div class="rank-position">${i + 1}</div>
+          <div class="rank-score-circle rank-score-${cls}">${a.score}</div>
+          <div class="rank-main">
+            <div class="rank-name">
+              ${flag ? `<span style="font-size:16px">${flag}</span>` : ""}
+              <a href="/actor/${a.id}" style="color:var(--text);text-decoration:none;font-weight:600">${a.name}</a>
+              ${a.attack_group_id ? `<span class="tag tag-accent" style="font-size:11px">${a.attack_group_id}</span>` : ""}
+              ${ransomBadge}
+            </div>
+            <div class="rank-meta">
+              <span>${ttpMeta}</span>
+              <span>Last seen: ${lastSeen}</span>
+            </div>
+            <div class="score-bar-row">
+              <div class="score-bar-track">
+                <div class="score-bar-fill" style="width:${a.score}%;background:${barColor(a.score)}"></div>
+              </div>
+              <span style="font-size:11px;color:var(--text-dim)">${a.score}/100</span>
+            </div>
+            <div class="rank-breakdown">${pills}</div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    const filterDesc = [
+      industry ? `<strong>${industry}</strong>` : null,
+      region   ? `<strong>${region}</strong>`   : null,
+    ].filter(Boolean).join(" · ") || "all actors";
+
+    root.innerHTML = `
+      ${warnHtml}
+      <div style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
+        Top ${data.actors.length} actors ranked for ${filterDesc}
+        <span style="margin-left:8px;font-size:11px">
+          Score = targeting (20) + posture exposure (35) + critical tactic exposure (25) + recency (20)
+        </span>
+      </div>
+      ${cards}
+    `;
+  } catch(e) {
+    root.innerHTML = `<div class="empty-state">Failed to load ranking: ${e.message}</div>`;
+  }
+}
+
+document.getElementById("run-btn").addEventListener("click", runRank);
+document.getElementById("clear-btn").addEventListener("click", () => {
+  document.getElementById("filter-industry").value = "";
+  document.getElementById("filter-region").value   = "";
+  document.getElementById("rank-root").innerHTML   = "";
+});
+
+// Allow Enter key on selects to trigger rank
+["filter-industry", "filter-region"].forEach(id => {
+  document.getElementById(id).addEventListener("change", runRank);
+});
+
+loadSyncStatus(document.getElementById("sync-status"));
+
+// Auto-run if query params present (deep-link support)
+const qp = new URLSearchParams(window.location.search);
+if (qp.get("industry") || qp.get("region")) {
+  if (qp.get("industry")) document.getElementById("filter-industry").value = qp.get("industry");
+  if (qp.get("region"))   document.getElementById("filter-region").value   = qp.get("region");
+  runRank();
+}
+</script>
+</body>
+</html>

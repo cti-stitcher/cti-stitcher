@@ -14,9 +14,10 @@
     <span class="topbar-logo">cti-stitcher</span>
     <div class="topbar-nav">
       <a href="/" class="active">Explorer</a>
+      <a href="/d3fend">D3FEND</a>
       <a href="/controls">Controls</a>
       <a href="/gap-analysis">Gap Analysis</a>
-      <a href="/d3fend">D3FEND</a>
+      <a href="/rank">Risk Rank</a>
       <a href="/settings">Connectors</a>
     </div>
     <span class="sync-status" id="sync-status"></span>
@@ -67,6 +68,11 @@
         <option value="US">🇺🇸 United States</option>
       </select>
 
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer;user-select:none">
+        <input type="checkbox" id="filter-attack-only" checked style="cursor:pointer" />
+        ATT&amp;CK actors only
+      </label>
+
       <button class="btn btn-ghost" id="clear-btn">Clear</button>
     </div>
 
@@ -88,9 +94,11 @@ async function loadActors(industry = "", countryCode = "") {
   list.innerHTML = '<div class="loading">Loading...</div>';
 
   try {
-    let url = "/api/actors?limit=500";
+    const attackOnly = document.getElementById("filter-attack-only").checked;
+    let url = "/api/actors?limit=5000";
     if (industry) url += `&industry=${encodeURIComponent(industry)}`;
     if (countryCode) url += `&country_code=${countryCode}`;
+    if (attackOnly) url += `&in_attack=true`;
 
     allActors = await API.get(url);
     renderActors(allActors);
@@ -163,11 +171,13 @@ document.getElementById("search-input").addEventListener("input", e => {
 
 document.getElementById("filter-industry").addEventListener("change", () => applyFilters());
 document.getElementById("filter-country").addEventListener("change", () => applyFilters());
+document.getElementById("filter-attack-only").addEventListener("change", () => applyFilters());
 
 document.getElementById("clear-btn").addEventListener("click", () => {
   document.getElementById("search-input").value = "";
   document.getElementById("filter-industry").value = "";
   document.getElementById("filter-country").value = "";
+  document.getElementById("filter-attack-only").checked = true;
   loadActors();
 });
 

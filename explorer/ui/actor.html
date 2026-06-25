@@ -6,6 +6,42 @@
   <title>Actor — cti-stitcher</title>
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="stylesheet" href="/static/style.css" />
+  <style>
+    /* technique-id badge coverage states */
+    .technique-id.tech-covered {
+      background: rgba(99,102,241,0.15);
+      color: var(--accent);
+      border-color: rgba(99,102,241,0.35);
+    }
+    .technique-id.tech-gap-critical {
+      background: rgba(239,68,68,0.12);
+      color: var(--danger, #ef4444);
+      border-color: rgba(239,68,68,0.35);
+    }
+    .technique-id.tech-gap-normal {
+      background: rgba(245,158,11,0.12);
+      color: #f59e0b;
+      border-color: rgba(245,158,11,0.35);
+    }
+    .gap-legend {
+      display: flex;
+      gap: 16px;
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .gap-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+    }
+  </style>
 </head>
 <body>
 <div class="shell">
@@ -14,9 +50,10 @@
     <span class="topbar-logo">cti-stitcher</span>
     <div class="topbar-nav">
       <a href="/">Explorer</a>
+      <a href="/d3fend">D3FEND</a>
       <a href="/controls">Controls</a>
       <a href="/gap-analysis">Gap Analysis</a>
-      <a href="/d3fend">D3FEND</a>
+      <a href="/rank">Risk Rank</a>
       <a href="/settings">Connectors</a>
     </div>
     <span class="sync-status" id="sync-status"></span>
@@ -39,24 +76,66 @@ const TACTIC_ORDER = [
   "exfiltration", "impact", "unknown"
 ];
 
+const CRITICAL_TACTICS = new Set([
+  "initial-access", "execution", "privilege-escalation", "defense-evasion"
+]);
+
 function tacticLabel(t) {
   return t.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Build a lookup from attack_id → coverage class given D3FEND gap data.
+// Returns null if no posture is configured (caller renders without coloring).
+function buildCoverageMap(gapData) {
+  if (!gapData) return null;
+  const hasPosture = gapData.posture &&
+    (gapData.posture.deployed_count > 0 || gapData.posture.partial_count > 0);
+  if (!hasPosture) return null;
+
+  const map = new Map();
+  for (const t of (gapData.covered || [])) {
+    map.set(t.attack_id, "covered");
+  }
+  for (const t of (gapData.not_deployed || [])) {
+    // tactic determines critical vs normal — stored on the technique object
+    map.set(t.attack_id, CRITICAL_TACTICS.has(t.tactic) ? "gap-critical" : "gap-normal");
+  }
+  // no_mapping stays unset (no color — neither a gap nor covered, just unmapped)
+  return map;
+}
+
+// Returns the CSS class for a technique-id badge, or "" if no coverage data
+function techClass(attackId, tactic, coverageMap) {
+  if (!coverageMap) return "";
+  const status = coverageMap.get(attackId);
+  if (status === "covered") return "tech-covered";
+  if (status === "gap-critical") return "tech-gap-critical";
+  if (status === "gap-normal") return "tech-gap-normal";
+  // Not in map (no_mapping) — use tactic to decide critical vs normal for coloring
+  // These are genuine blind spots; color them like gaps so the analyst sees them
+  return CRITICAL_TACTICS.has(tactic) ? "tech-gap-critical" : "tech-gap-normal";
 }
 
 async function load() {
   const root = document.getElementById("profile-root");
   try {
-    const a = await API.get(`/api/actors/${actorId}`);
+    // Fetch actor + gap data in parallel; gap is optional (fails silently)
+    const [a, gapData] = await Promise.all([
+      API.get(`/api/actors/${actorId}`),
+      API.get(`/api/gap/d3fend/${actorId}`).catch(() => null),
+    ]);
+
     document.title = `${a.name} — cti-stitcher`;
 
     const flag = countryFlag(a.country_code);
     const country = countryName(a.country_code);
+    const coverageMap = buildCoverageMap(gapData);
 
     // Header
     const attackLink = a.mitre_url
       ? `<a class="btn btn-ghost" href="${a.mitre_url}" target="_blank">MITRE ATT&CK ↗</a>` : "";
 
-    // Aliases section
+    // Aliases
     const aliasRows = a.aliases.map(al => `
       <div class="alias-row">
         <span class="alias-name">${al.alias}</span>
@@ -65,7 +144,7 @@ async function load() {
       </div>
     `).join("") || "<div style='color:var(--text-dim)'>No additional aliases recorded.</div>";
 
-    // Techniques by tactic
+    // Techniques by tactic — color-coded by coverage when posture is configured
     const tacticKeys = Object.keys(a.techniques_by_tactic).sort((a, b) => {
       const ai = TACTIC_ORDER.indexOf(a), bi = TACTIC_ORDER.indexOf(b);
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
@@ -74,27 +153,41 @@ async function load() {
     const tacticBlocks = tacticKeys.map(tactic => {
       const techniques = a.techniques_by_tactic[tactic];
       const rows = techniques.map(t => {
+        const cls = techClass(t.attack_id, tactic, coverageMap);
         const controlBadges = (t.controls || []).map(c =>
           `<span class="control-badge" title="${c.name}">${c.control_id}</span>`
         ).join("");
         return `
         <div class="technique-item">
           <div class="technique-row">
-            <span class="technique-id">${t.attack_id}</span>
+            <span class="technique-id ${cls}">${t.attack_id}</span>
             <span>${t.name}</span>
             ${t.is_subtechnique ? tag("sub", "") : ""}
           </div>
           ${controlBadges ? `<div class="technique-controls">${controlBadges}</div>` : ""}
-        </div>
-      `;
+        </div>`;
       }).join("");
       return `
         <div class="tactic-block">
           <div class="tactic-name">${tacticLabel(tactic)}</div>
           ${rows}
-        </div>
-      `;
+        </div>`;
     }).join("") || "<div style='color:var(--text-dim)'>No techniques recorded.</div>";
+
+    // Legend (only shown when posture is configured)
+    const legendHtml = coverageMap ? `
+      <div class="gap-legend">
+        <span class="gap-legend-item">
+          <span class="legend-dot" style="background:rgba(99,102,241,0.5)"></span> Covered
+        </span>
+        <span class="gap-legend-item">
+          <span class="legend-dot" style="background:rgba(239,68,68,0.5)"></span> Critical gap
+        </span>
+        <span class="gap-legend-item">
+          <span class="legend-dot" style="background:rgba(245,158,11,0.5)"></span> Gap
+        </span>
+        <a href="/gap-analysis" style="color:var(--accent);font-size:11px;margin-left:4px">Full analysis →</a>
+      </div>` : "";
 
     // Software
     const softwarePills = a.software.map(sw =>
@@ -103,7 +196,7 @@ async function load() {
         : `<span class="tag ${sw.type === 'malware' ? 'tag-warn' : ''}">${sw.name}</span>`
     ).join("") || "<span style='color:var(--text-dim)'>None recorded.</span>";
 
-    // Targeting — all tags are clickable pivots; pass source actor so targeting page can show context
+    // Targeting — clickable pivot tags
     const fromParam = `?from=${encodeURIComponent(a.name)}&from_id=${a.id}`;
     const industries = a.targeting.industries.map(i =>
       `<a href="/targeting/industry/${encodeURIComponent(i)}${fromParam}" class="tag" style="text-decoration:none;cursor:pointer">${i}</a>`
@@ -150,4 +243,33 @@ async function load() {
       </div>
 
       <div class="section">
-        <div class="section-title">Targeting
+        <div class="section-title">Targeting</div>
+        <div style="margin-bottom:8px">
+          <span style="font-size:12px;color:var(--text-dim);margin-right:8px">INDUSTRIES</span>${industries}
+        </div>
+        <div>
+          <span style="font-size:12px;color:var(--text-dim);margin-right:8px">REGIONS / COUNTRIES</span>${regionsCountries}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Techniques (${a.technique_count})</div>
+        ${legendHtml}
+        ${tacticBlocks}
+      </div>
+
+      <div class="section">
+        <div class="section-title">Tools & Malware (${a.software.length})</div>
+        <div class="software-grid">${softwarePills}</div>
+      </div>
+    `;
+  } catch (e) {
+    root.innerHTML = `<div class="empty-state">Failed to load actor: ${e.message}</div>`;
+  }
+}
+
+loadSyncStatus(document.getElementById("sync-status"));
+load();
+</script>
+</body>
+</html>

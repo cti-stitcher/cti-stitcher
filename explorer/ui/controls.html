@@ -14,9 +14,10 @@
     <span class="topbar-logo">cti-stitcher</span>
     <div class="topbar-nav">
       <a href="/">Explorer</a>
+      <a href="/d3fend">D3FEND</a>
       <a href="/controls" class="active">Controls</a>
       <a href="/gap-analysis">Gap Analysis</a>
-      <a href="/d3fend">D3FEND</a>
+      <a href="/rank">Risk Rank</a>
       <a href="/settings">Connectors</a>
     </div>
     <span class="sync-status" id="sync-status"></span>
@@ -42,8 +43,15 @@
       </a>
     </div>
 
-    <!-- Family filter pills -->
-    <div class="family-pills" id="family-pills"></div>
+    <!-- Family filter pills + sort -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+      <div class="family-pills" id="family-pills" style="margin-bottom:0"></div>
+      <select id="sort-select" style="font-size:12px;padding:4px 8px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;cursor:pointer">
+        <option value="id">Sort: Control ID</option>
+        <option value="techniques">Sort: Most Techniques</option>
+        <option value="actors">Sort: Most Actors</option>
+      </select>
+    </div>
 
     <!-- Control list -->
     <div id="controls-list"><div class="loading">Loading...</div></div>
@@ -56,6 +64,7 @@
 let allControls = [];
 let implementedIds = new Set(); // set of control_id strings e.g. "AC-02"
 let activeFamily = "ALL";
+let activeSort = "id";
 
 async function load() {
   loadSyncStatus(document.getElementById("sync-status"));
@@ -128,6 +137,13 @@ async function toggleControl(event, controlId) {
   updateCounts(filtered);
 }
 
+function sortControls(arr) {
+  const copy = [...arr];
+  if (activeSort === "techniques") return copy.sort((a, b) => b.technique_count - a.technique_count);
+  if (activeSort === "actors")     return copy.sort((a, b) => b.actor_count - a.actor_count);
+  return copy.sort((a, b) => a.control_id.localeCompare(b.control_id));
+}
+
 function renderControls() {
   const filtered = activeFamily === "ALL"
     ? allControls
@@ -135,13 +151,14 @@ function renderControls() {
 
   updateCounts(filtered);
 
+  const sorted = sortControls(filtered);
   const list = document.getElementById("controls-list");
-  if (!filtered.length) {
+  if (!sorted.length) {
     list.innerHTML = `<div class="empty-state">No controls in this family.</div>`;
     return;
   }
 
-  list.innerHTML = filtered.map(c => {
+  list.innerHTML = sorted.map(c => {
     const impl = implementedIds.has(c.control_id);
     return `
       <div class="control-card ${impl ? "control-card-impl" : ""}">
@@ -150,7 +167,7 @@ function renderControls() {
           <span class="control-card-name">${c.name}</span>
         </a>
         <div class="control-card-right">
-          <span class="control-stat" title="Techniques mitigated">
+                    <span class="control-stat" title="Techniques mitigated">
             <span class="control-stat-num">${c.technique_count}</span>
             <span class="control-stat-label">techniques</span>
           </span>
@@ -176,6 +193,11 @@ API.post = async (path) => {
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
   return resp.json();
 };
+
+document.getElementById("sort-select").addEventListener("change", e => {
+  activeSort = e.target.value;
+  renderControls();
+});
 
 load();
 </script>

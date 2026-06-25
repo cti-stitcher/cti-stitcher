@@ -14,9 +14,10 @@
     <span class="topbar-logo">cti-stitcher</span>
     <div class="topbar-nav">
       <a href="/">Explorer</a>
+      <a href="/d3fend">D3FEND</a>
       <a href="/controls">Controls</a>
       <a href="/gap-analysis" class="active">Gap Analysis</a>
-      <a href="/d3fend">D3FEND</a>
+      <a href="/rank">Risk Rank</a>
       <a href="/settings">Connectors</a>
     </div>
     <span class="sync-status" id="sync-status"></span>
@@ -683,4 +684,45 @@ function renderRecommendations(recs) {
   `;
 }
 
-function renderD3fendNoMapp
+function renderD3fendNoMappingRow(t) {
+  return `
+    <div class="technique-item">
+      <div class="technique-row">
+        <span class="technique-id">${t.attack_id}</span>
+        <span>${t.name}</span>
+        ${t.is_subtechnique ? tag("sub", "") : ""}
+        <span class="tag" style="font-size:10px;opacity:0.5">no d3fend mapping</span>
+      </div>
+    </div>`;
+}
+
+function tag(cls, label) {
+  return `<span class="tag ${cls ? "tag-" + cls : ""}" style="font-size:10px">${label}</span>`;
+}
+
+// ---- Initialization ----
+
+async function initActors() {
+  try {
+    const actors = await API.get("/api/actors?in_attack=true&limit=5000");
+    allActors = actors;
+    populateListbox(actors);
+
+    // Deep-link: auto-select actor if ?actor_id= in URL
+    const qp = new URLSearchParams(window.location.search);
+    const deepId = qp.get("actor_id");
+    if (deepId) {
+      const lb = document.getElementById("actor-listbox");
+      lb.value = deepId;
+      if (lb.value) runSingleAnalysis();
+    }
+  } catch (e) {
+    console.error("Failed to load actors:", e);
+  }
+}
+
+loadSyncStatus(document.getElementById("sync-status"));
+initActors();
+</script>
+</body>
+</html>
