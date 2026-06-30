@@ -156,7 +156,7 @@ After each sync, the `ResolutionIndex` is rebuilt from all alias rows.
 - **Fuzzy match** — `rapidfuzz.fuzz.token_sort_ratio` at threshold 85
 - **Collision resolution** — if two sources provide the same normalized alias for different actors, the higher-confidence entry wins
 
-`normalize_alias()` in `core/ingest/base.py` and `_normalize()` in `core/resolution.py` must always be identical. Any change to normalization logic must update both.
+`normalize_alias()` is defined once in `core/ingest/base.py`. `core/resolution.py` imports it directly — there is no separate `_normalize()` definition. Any change to normalization logic only needs to happen in `base.py`.
 
 ---
 
