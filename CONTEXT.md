@@ -141,7 +141,7 @@ After each sync, the `ResolutionIndex` is rebuilt from all alias rows.
 
 - `exposure_score` — fraction of the actor's techniques not covered by posture × 35
 - `critical_score` — uncovered fraction of `CRITICAL_TACTICS` techniques × 25
-- `CRITICAL_TACTICS` — `{initial-access, execution, privilege-escalation, defense-evasion}` — "can they get in and stay in"
+- `CRITICAL_TACTICS` — `{initial-access, execution, privilege-escalation, defense-evasion, persistence, lateral-movement}` — "can they get in, stay in, and spread"
 - `ransomware_flag` — heuristic boolean surfaced in the UI; does not reduce the score
 
 `posture_configured` is True if any NIST controls are implemented or any D3FEND countermeasures are set. If False, exposure and critical scores go to neutral values rather than zero.

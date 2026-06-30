@@ -44,6 +44,8 @@ CRITICAL_TACTICS = {
     "execution",
     "privilege-escalation",
     "defense-evasion",
+    "persistence",
+    "lateral-movement",
 }
 
 # Recency scoring thresholds (days)
@@ -74,7 +76,7 @@ def _recency_score(actor: Actor) -> int:
     for threshold, pts in RECENCY:
         if days <= threshold:
             return pts
-    return 2  # seen, but very old
+    return 0  # seen, but activity is too old to be relevant
 
 
 def _is_ransomware_related(actor: Actor, software_names: list[str]) -> bool:
@@ -299,7 +301,10 @@ def rank_actors(
                 exposure_score = round(exposure_frac * 35)
 
             # -- Critical tactic exposure (25 pts) --
-            critical_techs = [(tid, tac) for tid, tac in techs if tac in CRITICAL_TACTICS]
+            critical_techs = [
+                (tid, tac) for tid, tac in techs
+                if any(t.strip() in CRITICAL_TACTICS for t in tac.split(","))
+            ]
             n_critical = len(critical_techs)
             if n_critical == 0 or not posture_configured:
                 critical_score = 12  # neutral
