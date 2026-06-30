@@ -28,6 +28,7 @@ from explorer.api.gap import router as gap_router
 from explorer.api.report import router as report_router
 from explorer.api.software import router as software_router
 from explorer.api.targeting import router as targeting_router
+from explorer.api.rank import router as rank_router
 from explorer.api.search import router as search_router
 from explorer.api.sync import router as sync_router
 
@@ -44,7 +45,7 @@ async def lifespan(app: FastAPI):
     app.state.db_session = session
     app.state.resolver = resolver
 
-    print("✓ cti-stitcher explorer ready at http://localhost:8000")
+    print("[OK] cti-stitcher explorer ready at http://localhost:8000")
     yield
 
     session.close()
@@ -65,6 +66,7 @@ app.include_router(gap_router)
 app.include_router(report_router)
 app.include_router(software_router)
 app.include_router(targeting_router)
+app.include_router(rank_router)
 app.include_router(search_router)
 app.include_router(sync_router)
 
@@ -107,4 +109,36 @@ def software_page(software_id: int):
     return FileResponse(str(UI_DIR / "software.html"))
 
 
-@app
+@app.get("/targeting/{target_type}/{value:path}")
+def targeting_page(target_type: str, value: str):
+    return FileResponse(str(UI_DIR / "targeting.html"))
+
+
+@app.get("/rank")
+def rank_page():
+    return FileResponse(str(UI_DIR / "rank.html"))
+
+
+@app.get("/settings")
+def settings_page():
+    return FileResponse(str(UI_DIR / "settings.html"))
+
+
+def _open_browser():
+    """Wait for the server to start, then open the browser."""
+    import time
+    import webbrowser
+    time.sleep(1.5)
+    webbrowser.open("http://localhost:8000")
+
+
+def cli():
+    """Entry point for `python -m explorer` and the cti-stitcher CLI script."""
+    import threading
+    import uvicorn
+    threading.Thread(target=_open_browser, daemon=True).start()
+    uvicorn.run("explorer.main:app", host="127.0.0.1", port=8000, reload=False)
+
+
+if __name__ == "__main__":
+    cli()
