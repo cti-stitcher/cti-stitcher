@@ -589,4 +589,15 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
 /* Framework sub-tab spacing */
 #framework-tabs .gap-tabs {
-  b
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+#framework-tabs .gap-tab {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: none;
+  margin-bottom: -1px;
+}
+#framework-tabs .gap-tab.active {
+  border-bottom: 1px solid var(--surface);
+}

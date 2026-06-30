@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, Request
 from sqlalchemy.orm import Session
 
 from core.resolution import ResolutionIndex
-from explorer.api.actors import _actor_summary
+from explorer.api.serializers import actor_summary
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -39,7 +39,7 @@ def search_actors(
         from core.models import Actor
         actor = db.query(Actor).filter_by(id=res.actor_id).first()
         if actor:
-            summary = _actor_summary(actor, db)
+            summary = actor_summary(actor, db)
             summary["match_type"] = res.match_type
             summary["matched_alias"] = res.matched_alias
             actors_out.append(summary)

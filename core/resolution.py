@@ -10,13 +10,13 @@ Usage:
     # result.actor_id, result.attack_group_id, result.canonical_name, result.confidence
 """
 
-import re
 from dataclasses import dataclass
 from typing import Optional
 
 from rapidfuzz import process, fuzz
 from sqlalchemy.orm import Session
 
+from core.ingest.base import normalize_alias
 from core.models import Actor, Alias
 
 FUZZY_THRESHOLD = 85  # minimum score (0-100) for a fuzzy match to count
@@ -85,7 +85,7 @@ class ResolutionIndex:
         if not query or not query.strip():
             return None
 
-        norm = _normalize(query)
+        norm = normalize_alias(query)
 
         # --- Exact match ---
         if norm in self._index:
@@ -129,7 +129,7 @@ class ResolutionIndex:
         if not query or not query.strip():
             return []
 
-        norm = _normalize(query)
+        norm = normalize_alias(query)
         seen_actors: set[int] = set()
         results: list[ResolveResult] = []
 
@@ -171,14 +171,6 @@ class ResolutionIndex:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _normalize(text: str) -> str:
-    """Must match normalize_alias() in base.py exactly."""
-    text = text.lower().strip()
-    text = re.sub(r"[\s\-_\.]+", " ", text)
-    text = re.sub(r"[^a-z0-9 ]", "", text)
-    return text.strip()
-
 
 def _confidence_rank(confidence: str) -> int:
     """Lower number = higher confidence."""
