@@ -12,7 +12,7 @@ bear/panda/etc names, Microsoft Blizzard/Typhoon names, and more.
 import requests
 from sqlalchemy.orm import Session
 
-from core.ingest.base import BaseConnector, normalize_alias
+from core.ingest.base import BaseConnector, find_actor_by_names, normalize_alias, SECTOR_KEYWORDS
 from core.models import Actor, Alias, Targeting
 
 MISP_GALAXY_URL = (
@@ -52,7 +52,7 @@ class MispGalaxyConnector(BaseConnector):
             description = cluster.get("description", "")
 
             # Try to find existing actor by matching any synonym to our alias table
-            actor_db_id = _find_actor(session, canonical_name, synonyms)
+            actor_db_id = find_actor_by_names(session, [canonical_name] + synonyms)
 
             if actor_db_id is None:
                 # New actor — not in ATT&CK, store without attack_group_id
@@ -129,19 +129,6 @@ class MispGalaxyConnector(BaseConnector):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _find_actor(session: Session, name: str, synonyms: list[str]) -> int | None:
-    """
-    Try to match any of the provided names to an existing actor
-    via the alias table. Returns actor db id or None.
-    """
-    for candidate in [name] + synonyms:
-        norm = normalize_alias(candidate)
-        alias_row = session.query(Alias).filter_by(alias_normalized=norm).first()
-        if alias_row:
-            return alias_row.actor_id
-    return None
-
-
 def _extract_country(meta: dict) -> str | None:
     country_map = {
         "china": "CN", "russia": "RU", "north korea": "KP",
@@ -151,17 +138,6 @@ def _extract_country(meta: dict) -> str | None:
     }
     country_raw = meta.get("country", "").lower()
     return country_map.get(country_raw, country_raw.upper()[:2] if country_raw else None)
-
-
-SECTOR_KEYWORDS = {
-    "financial": "Financial Services", "banking": "Financial Services",
-    "government": "Government", "defence": "Defense", "defense": "Defense",
-    "military": "Defense", "healthcare": "Healthcare", "health": "Healthcare",
-    "energy": "Energy", "oil": "Energy", "technology": "Technology",
-    "telecom": "Telecommunications", "media": "Media", "education": "Education",
-    "aerospace": "Aerospace", "transportation": "Transportation",
-    "manufacturing": "Manufacturing", "pharmaceutical": "Pharmaceutical",
-}
 
 
 def _extract_sectors(meta: dict) -> list[str]:

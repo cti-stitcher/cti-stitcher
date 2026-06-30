@@ -294,4 +294,7 @@ class SyncLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     connector: Mapped[str] = mapped_column(String(64), nullable=False)
-    run_a
+    run_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)   # success / partial / failed
+    records_updated: Mapped[int] = mapped_column(Integer, default=0)
+    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from core.db import get_session
 from core.models import Actor, Alias, ActorTechnique, ActorSoftware, Targeting, Technique, Software, Control, TechniqueControl
+from explorer.api.serializers import actor_summary
 
 router = APIRouter(prefix="/api/actors", tags=["actors"])
 
@@ -26,17 +27,21 @@ def list_actors(
     industry: Optional[str] = Query(None, description="Filter by target industry"),
     region: Optional[str] = Query(None, description="Filter by target region or country"),
     country_code: Optional[str] = Query(None, description="Filter by actor origin country (ISO code)"),
-    limit: int = Query(2000, le=5000),
+    in_attack: Optional[bool] = Query(None, description="True = ATT&CK actors only, False = Malpedia-only, None = all"),
+    limit: int = Query(5000, le=10000),
     db: Session = Depends(_db),
 ):
     """
     Return a list of actors with summary info.
-    Supports filtering by target industry, region, and actor origin country.
+    Supports filtering by target industry, region, actor origin country, and ATT&CK membership.
     """
     query = db.query(Actor)
 
     if country_code:
         query = query.filter(Actor.country_code == country_code.upper())
+
+    if in_attack is not None:
+        query = query.filter(Actor.in_attack == in_attack)
 
     actors = query.order_by(Actor.name).limit(limit).all()
 
@@ -53,7 +58,7 @@ def list_actors(
             filtered.append(actor)
         actors = filtered
 
-    return [_actor_summary(actor, db) for actor in actors]
+    return [actor_summary(actor, db) for actor in actors]
 
 
 # ---------------------------------------------------------------------------
@@ -71,29 +76,6 @@ def get_actor(actor_id: int, db: Session = Depends(_db)):
 # ---------------------------------------------------------------------------
 # Serializers
 # ---------------------------------------------------------------------------
-
-def _actor_summary(actor: Actor, db: Session) -> dict:
-    aliases = db.query(Alias).filter_by(actor_id=actor.id).all()
-    technique_count = db.query(ActorTechnique).filter_by(actor_id=actor.id).count()
-    industries = [
-        t.value for t in db.query(Targeting)
-        .filter_by(actor_id=actor.id, target_type="industry").all()
-    ]
-    return {
-        "id": actor.id,
-        "name": actor.name,
-        "attack_group_id": actor.attack_group_id,
-        "country_code": actor.country_code,
-        "technique_count": technique_count,
-        "industries": sorted(set(industries)),
-        "aliases": [
-            {"alias": a.alias, "source": a.source, "confidence": a.confidence}
-            for a in aliases
-            if a.alias != actor.name
-        ][:8],  # cap at 8 for list view
-        "in_attack": actor.in_attack,
-    }
-
 
 def _actor_detail(actor: Actor, db: Session) -> dict:
     aliases = db.query(Alias).filter_by(actor_id=actor.id).all()
@@ -175,4 +157,5 @@ def _actor_detail(actor: Actor, db: Session) -> dict:
             "countries": sorted({t.value for t in targeting if t.target_type == "country"}),
         },
         "mitre_url": f"https://attack.mitre.org/groups/{actor.attack_group_id}/" if actor.attack_group_id else None,
-        "malpedia_url": None,  # populated by malpedia connector in 
+        "malpedia_url": None,  # populated by malpedia connector in future
+    }

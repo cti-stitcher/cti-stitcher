@@ -17,7 +17,7 @@ import requests
 
 from sqlalchemy.orm import Session
 
-from core.ingest.base import BaseConnector, normalize_alias
+from core.ingest.base import BaseConnector, normalize_alias, truncate, SECTOR_KEYWORDS
 from core.models import Actor, Alias, ActorSoftware, ActorTechnique, Software, Technique
 
 ATTACK_BUNDLE_URL = (
@@ -26,30 +26,6 @@ ATTACK_BUNDLE_URL = (
 )
 
 SOURCE = "attack"
-
-# Rough sector keywords → normalized sector label
-# Used to extract targeting from free-text descriptions
-SECTOR_KEYWORDS = {
-    "financial": "Financial Services",
-    "banking": "Financial Services",
-    "government": "Government",
-    "defense": "Defense",
-    "military": "Defense",
-    "healthcare": "Healthcare",
-    "energy": "Energy",
-    "oil": "Energy",
-    "gas": "Energy",
-    "technology": "Technology",
-    "telecom": "Telecommunications",
-    "media": "Media",
-    "education": "Education",
-    "aerospace": "Aerospace",
-    "transportation": "Transportation",
-    "retail": "Retail",
-    "manufacturing": "Manufacturing",
-    "pharmaceutical": "Pharmaceutical",
-    "critical infrastructure": "Critical Infrastructure",
-}
 
 
 class AttackConnector(BaseConnector):
@@ -92,7 +68,7 @@ class AttackConnector(BaseConnector):
                 t = Technique(
                     attack_id=attack_id,
                     name=obj.get("name", ""),
-                    description=_truncate(obj.get("description", "")),
+                    description=truncate(obj.get("description", "")),
                     tactic=tactic,
                     is_subtechnique=is_sub,
                 )
@@ -124,7 +100,7 @@ class AttackConnector(BaseConnector):
                     attack_id=attack_id,
                     name=obj.get("name", ""),
                     software_type=sw_type,
-                    description=_truncate(obj.get("description", "")),
+                    description=truncate(obj.get("description", "")),
                 )
                 session.add(sw)
                 session.flush()
@@ -160,7 +136,7 @@ class AttackConnector(BaseConnector):
                 existing.attack_group_id = attack_id
                 existing.stix_id = stix_id
                 existing.name = name
-                existing.description = _truncate(obj.get("description", ""))
+                existing.description = truncate(obj.get("description", ""))
                 existing.country_code = country
                 existing.first_seen = obj.get("first_seen", existing.first_seen)
                 existing.last_seen = obj.get("last_seen", existing.last_seen)
@@ -171,7 +147,7 @@ class AttackConnector(BaseConnector):
                     attack_group_id=attack_id,
                     stix_id=stix_id,
                     name=name,
-                    description=_truncate(obj.get("description", "")),
+                    description=truncate(obj.get("description", "")),
                     country_code=country,
                     first_seen=obj.get("first_seen"),
                     last_seen=obj.get("last_seen"),
@@ -233,7 +209,7 @@ class AttackConnector(BaseConnector):
                     if tech_db_id:
                         # The relationship description is the verbatim STIX procedure citation —
                         # how this specific actor uses this specific technique.
-                        procedure = _truncate(obj.get("description", ""), max_len=4000)
+                        procedure = truncate(obj.get("description", ""), max_len=4000)
                         exists = (
                             session.query(ActorTechnique)
                             .filter_by(actor_id=actor_db_id, technique_id=tech_db_id, source=SOURCE)
@@ -327,7 +303,3 @@ def _upsert_targeting(session: Session, actor_id: int, description: str, source:
                     source=source,
                     confidence="medium",
                 ))
-
-
-def _truncate(text: str, max_len: int = 2000) -> str:
-    return text[:max_len] if text else ""

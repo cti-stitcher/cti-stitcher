@@ -15,7 +15,7 @@ import os
 import requests
 from sqlalchemy.orm import Session
 
-from core.ingest.base import BaseConnector, normalize_alias
+from core.ingest.base import BaseConnector, find_actor_by_names, normalize_alias, truncate
 from core.models import Actor, Alias
 
 MANDIANT_TOKEN_URL = "https://api.intelligence.mandiant.com/token"
@@ -52,11 +52,11 @@ class MandiantConnector(BaseConnector):
                 aliases = [a.get("name", "") for a in actor.get("aliases", []) if a.get("name")]
                 all_names = list({canonical_name} | set(aliases))
 
-                actor_db_id = _find_actor(session, all_names)
+                actor_db_id = find_actor_by_names(session, all_names)
                 if actor_db_id is None:
                     db_actor = Actor(
                         name=canonical_name,
-                        description=(actor.get("description") or "")[:2000],
+                        description=truncate(actor.get("description") or ""),
                         in_attack=False,
                     )
                     session.add(db_actor)
@@ -100,10 +100,3 @@ class MandiantConnector(BaseConnector):
         return resp.json()["access_token"]
 
 
-def _find_actor(session: Session, names: list[str]) -> int | None:
-    for name in names:
-        norm = normalize_alias(name)
-        alias_row = session.query(Alias).filter_by(alias_normalized=norm).first()
-        if alias_row:
-            return alias_row.actor_id
-    return None
