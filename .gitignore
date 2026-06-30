@@ -10,4 +10,6 @@ build/
 *.egg-info/
 .DS_Store
 skills-lock.json
-.claude/
+.claude/worktrees/
+.claude/jobs/
+.claude/settings.local.json
